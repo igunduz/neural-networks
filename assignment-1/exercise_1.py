@@ -2,15 +2,15 @@ from exercise_2 import randomMatrixGenerator
 import random
 
 #create random matrix 1
-np.random.seed(5)
+random.seed(5)
 mat1 = randomMatrixGenerator(4,4)
 
 #create random matrix 2
-np.random.seed(8)
+random.seed(8)
 mat2= randomMatrixGenerator(4,4)
 
 #create random matrix 3
-np.random.seed(18)
+random.seed(18)
 mat3= randomMatrixGenerator(4,4)
 
 def check(mat1,mat2,mat3):

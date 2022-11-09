@@ -27,9 +27,9 @@ def computeEigens(a,b):
   return evalue,evector
 
 #Exercise 2, question 1
-np.random.seed(18)
+random.seed(18)
 findInverseTransMatrix(4,4)
 
 #Exercise 2, question 2
-np.random.seed(21)
+random.seed(21)
 computeEigens(a,b)
