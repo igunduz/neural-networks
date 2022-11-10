@@ -32,4 +32,4 @@ findInverseTransMatrix(4,4)
 
 #Exercise 2, question 2
 random.seed(21)
-computeEigens(a,b)
+computeEigens(4,4)
