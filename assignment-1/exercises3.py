@@ -2,16 +2,15 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-class FashionMNIST(Dataset):
-    
+class FashionMNIST(Dataset):    
     '''
     This class implements the custom dataset, includes init, len and get item methods
     '''
-    def __init__(self, csv_file, transform = None):
+    def __init__(self, csv_file, c = None):
         df = pd.read_csv(csv_file)
-    
-        self.X = df.values[:, 0:-1]
-        self.Y = df.values[:,:1]
+        self.X =torch.tensor(df.values[:, 0:-1])
+        self.Y = torch.tensor(df.values[:,:1])
+        self.transform = transform 
         #self.X = self.X.astype("float32")
       
     # number of rows in the dataset
@@ -21,11 +20,13 @@ class FashionMNIST(Dataset):
     
     # Returns each image and its label
     def __getitem__(self, idx):
-        label = self.Y[idx]
-        img = self.X[idx]
+        label = torch.tensor(self.Y[idx])
+        img = torch.tensor(self.X[idx])
+        if self.transform:
+            img = self.transform(img)
         return img, label
         
-    
+# Intialize class    
 df = FashionMNIST("fashion-mnist_train.csv", transform = None)  
 
 # Dataloader using custom Dataset class    
