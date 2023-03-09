@@ -64,7 +64,11 @@ class LSTMNetwork(nn.Module):
         packed = nn.utils.rnn.pack_padded_sequence(x, seq_lengths, batch_first=True, enforce_sorted=True).to(self.device)
         output, _ = self.rnn(packed)
         output, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
-        output = output[:,-1]
+        B, N, F = output.shape
+        idx = torch.tensor([l-1 for l in seq_lengths], dtype=torch.int64).to(self.device)
+        
+        output = torch.gather(output, dim=1, index=idx.view(B, 1, 1).expand(B, N, F))[:,-1,:]
+        
         output = self.linear_in(output)
         for linear_layer in self.linear_layers:
             output = linear_layer(output)
@@ -78,15 +82,15 @@ if __name__ == "__main__":
 
     num_mels = 13
     # Initialize the model
-    batch_size = 16
+    batch_size = 256
     input_size = num_mels
     hidden_size = 256
     output_size = num_classes
-    learning_rate = 1e-2
+    learning_rate = 1e-3
     num_epochs = 100
     n_rnn_layers = 3
-    hidden_dim_linear = [1024, 512]
-    single_batch_overfit = True
+    hidden_dim_linear = [1024, 512, 256]
+    single_batch_overfit = False
     
     train_data = AudioDataset(train, num_mels=num_mels)
     test_data = AudioDataset(test, num_mels=num_mels)
@@ -99,7 +103,7 @@ if __name__ == "__main__":
     
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = LSTMNetwork(input_size=13, hidden_size=256, output_size=num_classes, n_rnn_layers=n_rnn_layers, hidden_dim_linear=hidden_dim_linear, device=device).to(device)
+    model = LSTMNetwork(input_size=13, hidden_size=hidden_size, output_size=num_classes, n_rnn_layers=n_rnn_layers, hidden_dim_linear=hidden_dim_linear, device=device).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
     
@@ -115,6 +119,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             output = model(features, lengths)
             loss = criterion(output, label)
+
             loss.backward()
             optimizer.step()
 
