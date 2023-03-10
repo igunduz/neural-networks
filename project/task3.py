@@ -52,6 +52,7 @@ def spec_augment(signal, sr, num_mask=2, freq_masking=0.15, time_masking=0.20):
     return signal_aug
 
 
+#TODO add pitch manuplation
 
 # set the directory where the audio files are stored
 audio_dir = '/content/drive/MyDrive/project/speech_data'
@@ -60,7 +61,8 @@ audio_dir = '/content/drive/MyDrive/project/speech_data'
 audio_files = librosa.util.find_files(audio_dir, ext='wav')
 
 # initialize an empty list to store the augmented signals
-augmented_signals = []
+agu_signal_spec = []
+agu_signal_pitch = []
 
 # loop over all audio files and augment them using SpecAugment 
 for audio_file in audio_files:
@@ -69,17 +71,23 @@ for audio_file in audio_files:
         signal, sr = librosa.load(audio_file, sr=16000)
 
         # apply SpecAugment
-        signal = spec_augment(signal, sr)
+        signal_spec = spec_augment(signal, sr)
+        
+        #apply pitch manipulation 
+        signal_pitch = pitch_augument(signal,sr) #TODO change the params
 
         # add the augmented signal to the list
-        augmented_signals.append(signal)
+        agu_signal_spec.append(signal_spec)
+        agu_signal_pitch.append(signal_pitch)
 
 # concatenate all augmented signals into a single signal
-signal = np.concatenate(augmented_signals)
+signal_spec = np.concatenate(agu_signal_spec)
+signal_pitch = np.concatenate(signal_pitch)
+
 
 # plot the waveform
 plt.figure(figsize=(14, 5))
-librosa.display.waveplot(signal, sr=sr)
+librosa.display.waveplot(signal_spec, sr=sr)
 plt.title('Waveform')
 plt.xlabel('Time')
 plt.ylabel('Amplitude')
@@ -87,3 +95,4 @@ plt.show()
 
 
 #TODO To complete task 3.2 , we need to have models 
+#TODO we need to seperate single person train and test datasets
