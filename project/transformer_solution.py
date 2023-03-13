@@ -107,7 +107,7 @@ if __name__ == "__main__":
 
 
     learning_rate = 1e-4
-    num_epochs = 500
+    num_epochs = 1000
     single_batch_overfit = False
 
     model_name = f"tr_hs{hidden_size}_nh{num_heads}_bs{batch_size}_nl{num_att_layers}_dr{dropout}_lr{learning_rate}"
@@ -221,3 +221,5 @@ if __name__ == "__main__":
             break
     
     print ("best validation accuracy: ", best_val)
+    with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
+        f.write("best validation accuracy: ", best_val)

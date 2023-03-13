@@ -39,9 +39,9 @@ class PadSequence:
 
     
 class LSTMNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, n_rnn_layers, hidden_dim_linear, device):
+    def __init__(self, input_size, hidden_size, output_size, n_rnn_layers, hidden_dim_linear, dropout, device):
         super(LSTMNetwork, self).__init__()
-        self.rnn = nn.LSTM(input_size, hidden_size, num_layers=n_rnn_layers, batch_first=True)
+        self.rnn = nn.LSTM(input_size, hidden_size, num_layers=n_rnn_layers, dropout=dropout, batch_first=True)
         self.fc = nn.Linear(hidden_dim_linear[-1], output_size)
         self.device = device
         self.hidden_dim_linear = hidden_dim_linear
@@ -92,6 +92,7 @@ if __name__ == "__main__":
     n_rnn_layers = 3
     hidden_dim_linear = [1024, 512, 256]
     single_batch_overfit = False
+    dropout = 0.1
 
     save_model_every=10
     seed = 43
@@ -99,7 +100,7 @@ if __name__ == "__main__":
     np.random.seed(seed)
     random.seed(seed)
 
-    model_name = f"rnn_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_lr{learning_rate}"
+    model_name = f"rnn_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_dr{dropout}_lr{learning_rate}"
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
@@ -114,7 +115,8 @@ if __name__ == "__main__":
     
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = LSTMNetwork(input_size=13, hidden_size=hidden_size, output_size=num_classes, n_rnn_layers=n_rnn_layers, hidden_dim_linear=hidden_dim_linear, device=device).to(device)
+    model = LSTMNetwork(input_size=13, hidden_size=hidden_size, output_size=num_classes, n_rnn_layers=n_rnn_layers, 
+                    hidden_dim_linear=hidden_dim_linear, dropout=dropout, device=device).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
@@ -206,4 +208,6 @@ if __name__ == "__main__":
             break
 
     print ("best validation accuracy: ", best_val)
+    with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
+        f.write("best validation accuracy: ", best_val)
     
