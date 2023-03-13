@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as weight_init
+import random
 
 
 class AudioDataset(Dataset):
@@ -87,10 +88,20 @@ if __name__ == "__main__":
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 100
+    num_epochs = 1000
     n_rnn_layers = 3
     hidden_dim_linear = [1024, 512, 256]
     single_batch_overfit = False
+
+    save_model_every=10
+    seed = 43
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+    model_name = f"rnn_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_lr{learning_rate}"
+    save_dir = f'checkpoints/{model_name}'
+    os.makedirs(save_dir, exist_ok=True)
     
     train_data = AudioDataset(train, num_mels=num_mels)
     test_data = AudioDataset(test, num_mels=num_mels)
@@ -106,6 +117,13 @@ if __name__ == "__main__":
     model = LSTMNetwork(input_size=13, hidden_size=hidden_size, output_size=num_classes, n_rnn_layers=n_rnn_layers, hidden_dim_linear=hidden_dim_linear, device=device).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
+
+    start_epoch, ckpt, best_val = load_checkpoint(model, optimizer, save_dir)
+    not_decreasing_val_cnt = 0
+    train_losses = []
+    valid_losses = []
+    train_accs = []
+    valid_accs = []
     
     for epoch in range(num_epochs):
         model.train()
@@ -131,6 +149,8 @@ if __name__ == "__main__":
 
         train_loss /= len(train_data)
         train_accuracy = train_correct / len(train_data)
+        train_losses.append(train_loss)
+        train_accs.append(train_accuracy)
         
         if single_batch_overfit:
             train_accuracy = train_correct / batch_size
@@ -155,7 +175,32 @@ if __name__ == "__main__":
         
         val_loss /= len(dev_data)
         val_accuracy = val_correct / len(dev_data)
+        valid_losses.append(val_loss)
+        valid_accs.append(val_accuracy)
+
+        # Early stopping param update
+        if best_val > val_loss:
+            best_val = val_loss
+            not_decreasing_val_cnt = 0
+            is_best = True
+        else:
+            not_decreasing_val_cnt += 1
+            is_best = False
+
+        if (epoch + 1) % save_model_every == 0:
+            save_checkpoint(model, optimizer, epoch, save_dir, best_val, is_best=False)
+        if is_best:
+            save_checkpoint(model, optimizer, epoch, save_dir, best_val, is_best=True)
+
+        # Plot loss and acc
+        if epoch + 1 >= 50 and (epoch + 1) % save_model_every == 0:
+            plot_file_name = save_dir + '/{:04d}'.format(epoch+1)
+            plot_losses(train_losses, valid_losses, plot_file_name + '_loss.png', val_type='Loss')
+            plot_losses(train_accs, valid_accs, plot_file_name + '_acc.png', val_type='Acc')
+
 
         print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
     
-    
+        # Early stopping
+        if not_decreasing_val_cnt >= 100: 
+            break
