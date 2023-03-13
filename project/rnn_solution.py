@@ -134,7 +134,6 @@ if __name__ == "__main__":
         
         if single_batch_overfit:
             train_accuracy = train_correct / batch_size
-        # train_accuracy = train_correct / len(train_data)
 
         model.eval()
         val_loss = 0.0
