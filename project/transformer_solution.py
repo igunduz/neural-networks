@@ -97,7 +97,7 @@ if __name__ == "__main__":
     output_size = num_classes
     num_heads = 8
     num_att_layers = 4
-    dropout=0.2
+    dropout=0.3
     
     save_model_every=10
     seed = 43

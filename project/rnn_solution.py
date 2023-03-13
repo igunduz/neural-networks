@@ -179,8 +179,8 @@ if __name__ == "__main__":
         valid_accs.append(val_accuracy)
 
         # Early stopping param update
-        if best_val > val_loss:
-            best_val = val_loss
+        if best_val < val_accuracy:
+            best_val = val_accuracy
             not_decreasing_val_cnt = 0
             is_best = True
         else:
@@ -204,3 +204,6 @@ if __name__ == "__main__":
         # Early stopping
         if not_decreasing_val_cnt >= 100: 
             break
+
+    print ("best validation accuracy: ", best_val)
+    
