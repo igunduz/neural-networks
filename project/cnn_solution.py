@@ -115,7 +115,7 @@ if __name__ == "__main__":
     learning_rate = 1e-3
     num_epochs = 1000
     single_batch_overfit = False
-    dropout=0.1
+    dropout=0.2
     print("variables intialized")
 
     save_model_every=10
@@ -141,6 +141,9 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model =  SpeechToTextCNN(input_size=13, hidden_size=hidden_size, 
                          output_size=num_classes, dropout_prob=dropout).to(device)
+
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Number of trainable parameters:", num_params)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()

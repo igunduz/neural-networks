@@ -131,6 +131,9 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Number of trainable parameters:", num_params)
+
     start_epoch, ckpt, best_val = load_checkpoint(model, optimizer, save_dir)
     not_decreasing_val_cnt = 0
     train_losses = []

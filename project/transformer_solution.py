@@ -126,6 +126,10 @@ if __name__ == "__main__":
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = TransformerModel(input_size, hidden_size, output_size, num_heads, num_att_layers, dropout).to(device)
+
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Number of trainable parameters:", num_params)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
