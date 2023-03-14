@@ -115,7 +115,18 @@ if __name__ == "__main__":
     learning_rate = 1e-3
     num_epochs = 1000
     single_batch_overfit = False
+    dropout=0.1
     print("variables intialized")
+
+    save_model_every=10
+    seed = 43
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+    model_name = f"cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
+    save_dir = f'checkpoints/{model_name}'
+    os.makedirs(save_dir, exist_ok=True)
     
     train_data = AudioDataset(train, num_mels=num_mels)
     test_data = AudioDataset(test, num_mels=num_mels)
@@ -128,14 +139,22 @@ if __name__ == "__main__":
     
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model =  SpeechToTextCNN(input_size=13, hidden_size= hidden_size, 
-                         output_size=num_classes, dropout_prob = 0.1).to(device)
+    model =  SpeechToTextCNN(input_size=13, hidden_size=hidden_size, 
+                         output_size=num_classes, dropout_prob=dropout).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
+    start_epoch, ckpt, best_val = load_checkpoint(model, optimizer, save_dir)
+    not_decreasing_val_cnt = 0
+    train_losses = []
+    valid_losses = []
+    train_accs = []
+    valid_accs = []
+
+
     print("starting the training")
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         model.train()
         train_loss = 0.0
         train_correct = 0
@@ -159,6 +178,8 @@ if __name__ == "__main__":
     
         train_loss /= len(train_data)
         train_accuracy = train_correct / len(train_data)
+        train_losses.append(train_loss)
+        train_accs.append(train_accuracy)
     
         if single_batch_overfit:
             train_accuracy = train_correct / batch_size
@@ -184,7 +205,32 @@ if __name__ == "__main__":
     
         val_loss /= len(dev_data)
         val_accuracy = val_correct / len(dev_data)
+        valid_losses.append(val_loss)
+        valid_accs.append(val_accuracy)
+
+        # Early stopping param update
+        if best_val < val_accuracy:
+            best_val = val_accuracy
+            not_decreasing_val_cnt = 0
+            is_best = True
+        else:
+            not_decreasing_val_cnt += 1
+            is_best = False
+
+        if (epoch + 1) % save_model_every == 0:
+            save_checkpoint(model, optimizer, epoch, save_dir, best_val, is_best=False)
+        if is_best:
+            save_checkpoint(model, optimizer, epoch, save_dir, best_val, is_best=True)
+
+        # Plot loss and acc
+        if epoch + 1 >= 50 and (epoch + 1) % save_model_every == 0:
+            plot_file_name = save_dir + '/{:04d}'.format(epoch+1)
+            plot_losses(train_losses, valid_losses, plot_file_name + '_loss.png', val_type='Loss')
+            plot_losses(train_accs, valid_accs, plot_file_name + '_acc.png', val_type='Acc')
     
         print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
         
         
+    print ("best validation accuracy: ", best_val)
+    with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
+        f.write(f"best validation accuracy:
