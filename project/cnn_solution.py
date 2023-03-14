@@ -72,6 +72,8 @@ class SpeechToTextCNN(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
+
+        x = x.transpose(1,2)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu1(x)
@@ -89,8 +91,11 @@ class SpeechToTextCNN(nn.Module):
         x = self.relu3(x)
         x = self.pool3(x)
         x = self.dropout3(x)
+        x = x.transpose(1,2)
 
-        x = x.mean(dim=-1) # Global average pooling
+        
+
+        x = x.mean(dim=1) # Global average pooling
         x = self.fc(x)
 
         return x
@@ -108,9 +113,7 @@ if __name__ == "__main__":
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 2 #100
-    n_rnn_layers = 3
-    hidden_dim_linear = [1024, 512, 256]
+    num_epochs = 1000
     single_batch_overfit = False
     print("variables intialized")
     
@@ -125,8 +128,8 @@ if __name__ == "__main__":
     
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model =  SpeechToTextCNN(input_size=13, hidden_size= 3, 
-                         output_size=num_classes, dropout_prob = 0.1)
+    model =  SpeechToTextCNN(input_size=13, hidden_size= hidden_size, 
+                         output_size=num_classes, dropout_prob = 0.1).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
@@ -164,7 +167,6 @@ if __name__ == "__main__":
         model.eval()
         val_loss = 0.0
         val_correct = 0
-        print("the error is", val_loss)
     
         if not single_batch_overfit:
             with torch.no_grad():
