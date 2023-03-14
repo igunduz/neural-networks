@@ -39,15 +39,23 @@ class PadSequence:
 
     
 class LSTMNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, n_rnn_layers, hidden_dim_linear, dropout, device):
+    def __init__(self, input_size, hidden_size, output_size, n_rnn_layers, hidden_dim_linear, dropout, full_dropout, device):
         super(LSTMNetwork, self).__init__()
         self.rnn = nn.LSTM(input_size, hidden_size, num_layers=n_rnn_layers, dropout=dropout, batch_first=True)
         self.fc = nn.Linear(hidden_dim_linear[-1], output_size)
         self.device = device
         self.hidden_dim_linear = hidden_dim_linear
         self.linear_in = nn.Linear(hidden_size, hidden_dim_linear[0])
-        self.linear_layers = nn.ModuleList([nn.Linear(hidden_dim_linear[i], hidden_dim_linear[i+1]) for i in range(len(hidden_dim_linear)-1)])
-        
+        if not full_dropout:
+            self.linear_layers = nn.ModuleList(
+                [nn.Linear(hidden_dim_linear[i], hidden_dim_linear[i+1]) for i in range(len(hidden_dim_linear)-1)])
+        else:
+            linear_layers = []
+            for i in range(len(hidden_dim_linear)-1):
+                linear_layers.append(nn.Linear(hidden_dim_linear[i], hidden_dim_linear[i+1]))
+                linear_layers.append(nn.Dropout(dropout))
+            self.linear_layers = nn.ModuleList(linear_layers)
+
         self.init_weights()
         
     def init_weights(self):
@@ -92,7 +100,8 @@ if __name__ == "__main__":
     n_rnn_layers = 3
     hidden_dim_linear = [1024, 512, 256]
     single_batch_overfit = False
-    dropout = 0.1
+    dropout = 0.6
+    full_dropout = True
 
     save_model_every=10
     seed = 43
@@ -101,6 +110,8 @@ if __name__ == "__main__":
     random.seed(seed)
 
     model_name = f"rnn_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_dr{dropout}_lr{learning_rate}"
+    if full_dropout:
+        model_name += '_fdr'
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
@@ -116,7 +127,7 @@ if __name__ == "__main__":
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = LSTMNetwork(input_size=13, hidden_size=hidden_size, output_size=num_classes, n_rnn_layers=n_rnn_layers, 
-                    hidden_dim_linear=hidden_dim_linear, dropout=dropout, device=device).to(device)
+                    hidden_dim_linear=hidden_dim_linear, dropout=dropout, full_dropout=full_dropout, device=device).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
@@ -209,5 +220,5 @@ if __name__ == "__main__":
 
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
-        f.write("best validation accuracy: ", best_val)
+        f.write(f"best validation accuracy: {best_val}")
     

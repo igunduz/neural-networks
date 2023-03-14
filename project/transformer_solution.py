@@ -97,7 +97,7 @@ if __name__ == "__main__":
     output_size = num_classes
     num_heads = 8
     num_att_layers = 4
-    dropout=0.3
+    dropout=0.4
     
     save_model_every=10
     seed = 43
@@ -222,4 +222,4 @@ if __name__ == "__main__":
     
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
-        f.write("best validation accuracy: ", best_val)
+        f.write(f"best validation accuracy: {best_val}")
