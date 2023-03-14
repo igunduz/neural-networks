@@ -233,4 +233,4 @@ if __name__ == "__main__":
         
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
-        f.write(f"best validation accuracy:
+        f.write(f"best validation accuracy: {best_val}")
