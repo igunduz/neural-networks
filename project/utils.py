@@ -94,3 +94,49 @@ def preprocess(data, downsample_size=16, num_mels=13, pool='mean'):
     
     y = np.array(y.values.tolist())[:,0]
     return X, y
+
+import os
+import torch
+
+def save_checkpoint(model, optimizer, epoch, checkpoint_dir, best_val, is_best=False):
+    if not is_best:
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint-{:04d}.pt".format(epoch))
+    else:
+        checkpoint_path = os.path.join(checkpoint_dir, "best.pt")
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "best_val": best_val,
+    }
+    torch.save(checkpoint, checkpoint_path)
+
+def load_checkpoint(model, optimizer, checkpoint_dir):
+    checkpoint_files = [f for f in os.listdir(checkpoint_dir) if f.startswith("checkpoint-")]
+    if not checkpoint_files:
+        print("No checkpoints found in directory:", checkpoint_dir)
+        return 0, None, 0.0
+
+    latest_checkpoint_file = max(checkpoint_files)
+    latest_checkpoint_path = os.path.join(checkpoint_dir, latest_checkpoint_file)
+    checkpoint = torch.load(latest_checkpoint_path)
+    epoch = checkpoint["epoch"]
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    best_val = checkpoint["best_val"]
+    print(f"Loaded checkpoint {latest_checkpoint_file}")
+    return epoch, checkpoint, best_val
+
+import matplotlib.pyplot as plt
+
+def plot_losses(train_losses, valid_losses, filename, val_type='Loss'):
+    epochs = range(1, len(train_losses) + 1)
+    plt.figure(figsize=(10,10))
+    plt.plot(epochs, train_losses, 'b', label=f'Training {val_type}')
+    plt.plot(epochs, valid_losses, 'r', label=f'Validation {val_type}')
+    plt.title('Training and validation loss')
+    plt.xlabel('Epoch')
+    plt.ylabel(val_type)
+    plt.legend()
+    plt.savefig(filename)
+    plt.clf()

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as weight_init
+import os
 import random
 
 
@@ -38,50 +39,49 @@ class PadSequence:
     
 
     
-class LSTMNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, n_rnn_layers, hidden_dim_linear, dropout, full_dropout, device):
-        super(LSTMNetwork, self).__init__()
-        self.rnn = nn.LSTM(input_size, hidden_size, num_layers=n_rnn_layers, dropout=dropout, batch_first=True)
-        self.fc = nn.Linear(hidden_dim_linear[-1], output_size)
-        self.device = device
-        self.hidden_dim_linear = hidden_dim_linear
-        self.linear_in = nn.Linear(hidden_size, hidden_dim_linear[0])
-        if not full_dropout:
-            self.linear_layers = nn.ModuleList(
-                [nn.Linear(hidden_dim_linear[i], hidden_dim_linear[i+1]) for i in range(len(hidden_dim_linear)-1)])
-        else:
-            linear_layers = []
-            for i in range(len(hidden_dim_linear)-1):
-                linear_layers.append(nn.Linear(hidden_dim_linear[i], hidden_dim_linear[i+1]))
-                linear_layers.append(nn.Dropout(dropout))
-            self.linear_layers = nn.ModuleList(linear_layers)
 
-        self.init_weights()
+class TransformerModel(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, num_heads, num_layers, dropout):
+        super(TransformerModel, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        self.num_heads = num_heads
+        self.num_layers = num_layers
         
-    def init_weights(self):
-        # Initialize the weights of the forget gate to a higher value to encourage remembering
-        for name, param in self.rnn.named_parameters():
-            if 'bias' in name:
-                nn.init.constant_(param, 0.0)
-            elif 'weight_ih' in name:
-                nn.init.kaiming_normal_(param)
-            elif 'weight_hh' in name:
-                nn.init.orthogonal_(param)
-                # nn.init.constant_(getattr(self.rnn, name+'_i'), 1.0)    
-    
-    def forward(self, x, seq_lengths):
-        packed = nn.utils.rnn.pack_padded_sequence(x, seq_lengths, batch_first=True, enforce_sorted=True).to(self.device)
-        output, _ = self.rnn(packed)
-        output, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
-        B, N, F = output.shape
-        idx = torch.tensor([l-1 for l in seq_lengths], dtype=torch.int64).to(self.device)
+        # Define input embedding layer
+        self.embedding = nn.Linear(input_size, hidden_size)
         
-        output = torch.gather(output, dim=1, index=idx.view(B, 1, 1).expand(B, N, F))[:,-1,:]
+        # Define transformer encoder layer
+        self.transformer_encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(hidden_size, num_heads, dropout=dropout)
+            ,num_layers=num_layers)
         
-        output = self.linear_in(output)
-        for linear_layer in self.linear_layers:
-            output = linear_layer(output)
-        return self.fc(output.squeeze(0))
+        # Define output layer
+        self.output = nn.Linear(hidden_size, output_size)
+        
+    def forward(self, input_seq):
+        # Apply input embedding
+        embedded_seq = self.embedding(input_seq)
+        
+        # Transpose input for transformer encoder layer
+        embedded_seq = embedded_seq.transpose(0, 1)
+        
+        # Apply transformer encoder layer
+        output_seq = self.transformer_encoder(embedded_seq)
+        
+        # Transpose output to original shape
+        output_seq = output_seq.transpose(0, 1)
+
+        # Mean of all output token in the sequence (dim=1)
+        output_seq = output_seq.mean(1)
+        
+        # Apply output layer
+        output_seq = self.output(output_seq)
+        
+        return output_seq
+
+
     
     
 if __name__ == "__main__":
@@ -91,27 +91,26 @@ if __name__ == "__main__":
 
     num_mels = 13
     # Initialize the model
-    batch_size = 256
+    batch_size = 128
     input_size = num_mels
-    hidden_size = 256
+    hidden_size = 128
     output_size = num_classes
-    learning_rate = 1e-3
-    num_epochs = 1000
-    n_rnn_layers = 3
-    hidden_dim_linear = [1024, 512, 256]
-    single_batch_overfit = False
-    dropout = 0.6
-    full_dropout = True
-
+    num_heads = 8
+    num_att_layers = 4
+    dropout=0.4
+    
     save_model_every=10
     seed = 43
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
-    model_name = f"rnn_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_dr{dropout}_lr{learning_rate}"
-    if full_dropout:
-        model_name += '_fdr'
+
+    learning_rate = 1e-4
+    num_epochs = 1000
+    single_batch_overfit = False
+
+    model_name = f"tr_hs{hidden_size}_nh{num_heads}_bs{batch_size}_nl{num_att_layers}_dr{dropout}_lr{learning_rate}"
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
@@ -126,13 +125,13 @@ if __name__ == "__main__":
     
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = LSTMNetwork(input_size=13, hidden_size=hidden_size, output_size=num_classes, n_rnn_layers=n_rnn_layers, 
-                    hidden_dim_linear=hidden_dim_linear, dropout=dropout, full_dropout=full_dropout, device=device).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    criterion = nn.CrossEntropyLoss()
+    model = TransformerModel(input_size, hidden_size, output_size, num_heads, num_att_layers, dropout).to(device)
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print("Number of trainable parameters:", num_params)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    criterion = nn.CrossEntropyLoss()
 
     start_epoch, ckpt, best_val = load_checkpoint(model, optimizer, save_dir)
     not_decreasing_val_cnt = 0
@@ -140,18 +139,23 @@ if __name__ == "__main__":
     valid_losses = []
     train_accs = []
     valid_accs = []
-    
-    for epoch in range(num_epochs):
+
+    for epoch in range(start_epoch, num_epochs):
         model.train()
         train_loss = 0.0
         train_correct = 0
 
         for features, lengths, label in train_loader:
-            features = features.to(device)
-            # lengths = lengths.to(device)
+            features = features.to(device) # B x Seq len x Num mels
             label = label.to(device)
             optimizer.zero_grad()
-            output = model(features, lengths)
+
+            output = model(features)
+
+            # print (torch.argmax(output, 1))
+
+            # import pdb;
+            # pdb.set_trace()
             loss = criterion(output, label)
 
             loss.backward()
@@ -165,11 +169,11 @@ if __name__ == "__main__":
 
         train_loss /= len(train_data)
         train_accuracy = train_correct / len(train_data)
-        train_losses.append(train_loss)
-        train_accs.append(train_accuracy)
         
         if single_batch_overfit:
             train_accuracy = train_correct / batch_size
+        train_losses.append(train_loss)
+        train_accs.append(train_accuracy)
 
         model.eval()
         val_loss = 0.0
@@ -180,7 +184,7 @@ if __name__ == "__main__":
                 for features, lengths, label in dev_loader:
                     features = features.to(device)
                     label = label.to(device)
-                    output = model(features, lengths)
+                    output = model(features)
                     loss = criterion(output, label)
 
                     val_loss += loss.item() * features.size(0)
@@ -214,14 +218,12 @@ if __name__ == "__main__":
             plot_losses(train_losses, valid_losses, plot_file_name + '_loss.png', val_type='Loss')
             plot_losses(train_accs, valid_accs, plot_file_name + '_acc.png', val_type='Acc')
 
-
         print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
     
         # Early stopping
         if not_decreasing_val_cnt >= 100: 
             break
-
+    
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
-    

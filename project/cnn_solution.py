@@ -1,10 +1,18 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Mar 13 07:58:40 2023
+
+@author: kanubalad
+"""
+
 from utils import *
 from torch.utils.data import Dataset, DataLoader
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as weight_init
-import random
 
 
 class AudioDataset(Dataset):
@@ -38,51 +46,60 @@ class PadSequence:
     
 
     
-class LSTMNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, n_rnn_layers, hidden_dim_linear, dropout, full_dropout, device):
-        super(LSTMNetwork, self).__init__()
-        self.rnn = nn.LSTM(input_size, hidden_size, num_layers=n_rnn_layers, dropout=dropout, batch_first=True)
-        self.fc = nn.Linear(hidden_dim_linear[-1], output_size)
-        self.device = device
-        self.hidden_dim_linear = hidden_dim_linear
-        self.linear_in = nn.Linear(hidden_size, hidden_dim_linear[0])
-        if not full_dropout:
-            self.linear_layers = nn.ModuleList(
-                [nn.Linear(hidden_dim_linear[i], hidden_dim_linear[i+1]) for i in range(len(hidden_dim_linear)-1)])
-        else:
-            linear_layers = []
-            for i in range(len(hidden_dim_linear)-1):
-                linear_layers.append(nn.Linear(hidden_dim_linear[i], hidden_dim_linear[i+1]))
-                linear_layers.append(nn.Dropout(dropout))
-            self.linear_layers = nn.ModuleList(linear_layers)
+class SpeechToTextCNN(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, dropout_prob):
+        super(SpeechToTextCNN, self).__init__()
 
-        self.init_weights()
+        # Define the layers
+        self.conv1 = nn.Conv1d(in_channels=input_size, out_channels=hidden_size, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(hidden_size)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool1d(kernel_size=2)
+        self.dropout1 = nn.Dropout(dropout_prob)
+
+        self.conv2 = nn.Conv1d(in_channels=hidden_size, out_channels=hidden_size, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(hidden_size)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool1d(kernel_size=2)
+        self.dropout2 = nn.Dropout(dropout_prob)
+
+        self.conv3 = nn.Conv1d(in_channels=hidden_size, out_channels=hidden_size, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm1d(hidden_size)
+        self.relu3 = nn.ReLU()
+        self.pool3 = nn.MaxPool1d(kernel_size=2)
+        self.dropout3 = nn.Dropout(dropout_prob)
+
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+
+        x = x.transpose(1,2)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu1(x)
+        x = self.pool1(x)
+        x = self.dropout1(x)
+
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu2(x)
+        x = self.pool2(x)
+        x = self.dropout2(x)
+
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.relu3(x)
+        x = self.pool3(x)
+        x = self.dropout3(x)
+        x = x.transpose(1,2)
+
         
-    def init_weights(self):
-        # Initialize the weights of the forget gate to a higher value to encourage remembering
-        for name, param in self.rnn.named_parameters():
-            if 'bias' in name:
-                nn.init.constant_(param, 0.0)
-            elif 'weight_ih' in name:
-                nn.init.kaiming_normal_(param)
-            elif 'weight_hh' in name:
-                nn.init.orthogonal_(param)
-                # nn.init.constant_(getattr(self.rnn, name+'_i'), 1.0)    
-    
-    def forward(self, x, seq_lengths):
-        packed = nn.utils.rnn.pack_padded_sequence(x, seq_lengths, batch_first=True, enforce_sorted=True).to(self.device)
-        output, _ = self.rnn(packed)
-        output, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
-        B, N, F = output.shape
-        idx = torch.tensor([l-1 for l in seq_lengths], dtype=torch.int64).to(self.device)
-        
-        output = torch.gather(output, dim=1, index=idx.view(B, 1, 1).expand(B, N, F))[:,-1,:]
-        
-        output = self.linear_in(output)
-        for linear_layer in self.linear_layers:
-            output = linear_layer(output)
-        return self.fc(output.squeeze(0))
-    
+
+        x = x.mean(dim=1) # Global average pooling
+        x = self.fc(x)
+
+        return x
+
     
 if __name__ == "__main__":
     train, dev, test = load_and_split(None)
@@ -91,17 +108,15 @@ if __name__ == "__main__":
 
     num_mels = 13
     # Initialize the model
-    batch_size = 256
+    batch_size = 3 # 256
     input_size = num_mels
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
     num_epochs = 1000
-    n_rnn_layers = 3
-    hidden_dim_linear = [1024, 512, 256]
     single_batch_overfit = False
-    dropout = 0.6
-    full_dropout = True
+    dropout=0.2
+    print("variables intialized")
 
     save_model_every=10
     seed = 43
@@ -109,9 +124,7 @@ if __name__ == "__main__":
     np.random.seed(seed)
     random.seed(seed)
 
-    model_name = f"rnn_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_dr{dropout}_lr{learning_rate}"
-    if full_dropout:
-        model_name += '_fdr'
+    model_name = f"cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
@@ -126,13 +139,14 @@ if __name__ == "__main__":
     
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = LSTMNetwork(input_size=13, hidden_size=hidden_size, output_size=num_classes, n_rnn_layers=n_rnn_layers, 
-                    hidden_dim_linear=hidden_dim_linear, dropout=dropout, full_dropout=full_dropout, device=device).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    criterion = nn.CrossEntropyLoss()
+    model =  SpeechToTextCNN(input_size=13, hidden_size=hidden_size, 
+                         output_size=num_classes, dropout_prob=dropout).to(device)
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print("Number of trainable parameters:", num_params)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    criterion = nn.CrossEntropyLoss()
 
     start_epoch, ckpt, best_val = load_checkpoint(model, optimizer, save_dir)
     not_decreasing_val_cnt = 0
@@ -140,37 +154,40 @@ if __name__ == "__main__":
     valid_losses = []
     train_accs = []
     valid_accs = []
-    
-    for epoch in range(num_epochs):
+
+
+    print("starting the training")
+    for epoch in range(start_epoch, num_epochs):
         model.train()
         train_loss = 0.0
         train_correct = 0
-
+    
         for features, lengths, label in train_loader:
             features = features.to(device)
             # lengths = lengths.to(device)
             label = label.to(device)
             optimizer.zero_grad()
-            output = model(features, lengths)
+            output = model(features)
             loss = criterion(output, label)
-
+    
             loss.backward()
             optimizer.step()
-
+    
             train_loss += loss.item() * features.size(0)
             train_correct += (torch.argmax(output, dim=1) == label).sum().item()
-            
+    
             if single_batch_overfit:
                 break
-
+    
         train_loss /= len(train_data)
         train_accuracy = train_correct / len(train_data)
         train_losses.append(train_loss)
         train_accs.append(train_accuracy)
-        
+    
         if single_batch_overfit:
             train_accuracy = train_correct / batch_size
-
+        # train_accuracy = train_correct / len(train_data)
+    
         model.eval()
         val_loss = 0.0
         val_correct = 0
@@ -180,15 +197,15 @@ if __name__ == "__main__":
                 for features, lengths, label in dev_loader:
                     features = features.to(device)
                     label = label.to(device)
-                    output = model(features, lengths)
+                    output = model(features)
                     loss = criterion(output, label)
-
+    
                     val_loss += loss.item() * features.size(0)
                     val_correct += (torch.argmax(output, dim=1) == label).sum().item()
         else:
             val_loss = 0.0
             val_correct = 0
-        
+    
         val_loss /= len(dev_data)
         val_accuracy = val_correct / len(dev_data)
         valid_losses.append(val_loss)
@@ -213,15 +230,10 @@ if __name__ == "__main__":
             plot_file_name = save_dir + '/{:04d}'.format(epoch+1)
             plot_losses(train_losses, valid_losses, plot_file_name + '_loss.png', val_type='Loss')
             plot_losses(train_accs, valid_accs, plot_file_name + '_acc.png', val_type='Acc')
-
-
-        print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
     
-        # Early stopping
-        if not_decreasing_val_cnt >= 100: 
-            break
-
+        print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
+        
+        
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
-    
