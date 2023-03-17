@@ -104,7 +104,7 @@ class SpeechToTextCNN(nn.Module):
 if __name__ == "__main__":
     speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler']
     train, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker= "george")
-    #spec_train = spec_augmentation(meta_filename = "SDR_metadata.tsv", speaker= "george", num_augmentations=2, freq_masking=0.15, time_masking=0.20)
+    spec_train = spec_augmentation(meta_filename = "SDR_metadata.tsv", speaker= "george", num_augmentations=2, freq_masking=0.15, time_masking=0.20)
 
     num_classes = np.max(train[1].values.tolist()) + 1
     print("number of classes", num_classes)
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
-    train_data = AudioDataset(train, num_mels=num_mels)
+    train_data = AudioDataset(spec_train, num_mels=num_mels)
     test_data = AudioDataset(test, num_mels=num_mels)
    # dev_data = AudioDataset(dev, num_mels=num_mels)
     
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=16)
   #  dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
     
-
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model =  SpeechToTextCNN(input_size=13, hidden_size=hidden_size, 
                          output_size=num_classes, dropout_prob=dropout).to(device)

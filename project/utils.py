@@ -96,11 +96,11 @@ def spec_augmentation(meta_filename, speaker='', num_augmentations=1, freq_maski
         for i in range(num_augmentations):
             # apply SpecAugment     
             signal_spec = spec_augment(signal, sr, freq_masking=freq_masking, time_masking=time_masking)
-            signal_spec = extract_melspectrogram(signal_spec, sr=8000, num_mels=13)
-            signal_orig = extract_melspectrogram(signal, sr=8000, num_mels=13)
+            # signal_spec = extract_melspectrogram(signal_spec, sr=8000, num_mels=13)
+            # signal_orig = extract_melspectrogram(signal, sr=8000, num_mels=13)
             # add the augmented signal and its corresponding label to the list
             augmented_data.append(signal_spec.tolist())
-            augmented_data.append(signal_orig.tolist())
+            augmented_data.append(signal.tolist())
             labels.append(sdr_df.loc[sdr_df['file'] == audio_file, 'label'].iloc[0])
             labels.append(sdr_df.loc[sdr_df['file'] == audio_file, 'label'].iloc[0])
     x = np.array(augmented_data)
