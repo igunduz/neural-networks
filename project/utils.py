@@ -77,14 +77,22 @@ def partition_load(pdf,SAMPLING_RATE = 8000):
     x = list(map(lambda file_name: librosa.load(file_name, sr=SAMPLING_RATE)[0], pdf['file'].tolist())) 
     x = np.array(x)
     return x, y
-    
-def load_and_split(meta_filename):
-    sdr_df = pd.read_csv('SDR_metadata.tsv', sep='\t', header=0, index_col='Unnamed: 0')
-    train = partition_load(sdr_df.query("split == 'TRAIN'"))
-    test = partition_load(sdr_df.query("split == 'TEST'"))
-    dev = partition_load(sdr_df.query("split == 'DEV'"))
-    
-    return train, dev, test
+
+   
+#improved load_and_split works both for single-mutliple train/test seperation
+def load_and_split(meta_filename, speaker=''):
+    sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
+    if speaker == '':
+        train = partition_load(sdr_df.query("split == 'TRAIN'"))
+        test = partition_load(sdr_df.query("split == 'TEST'"))
+        dev = partition_load(sdr_df.query("split == 'DEV'"))
+        return train, dev, test
+    else:
+        #sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
+        speaker_data = sdr_df.query("speaker == '{}'".format(speaker))
+        train = partition_load(speaker_data)
+        test = partition_load(sdr_df.query("speaker != '{}'".format(speaker))) 
+        return train, test
 
 def preprocess(data, downsample_size=16, num_mels=13, pool='mean'):
     X, y = data
