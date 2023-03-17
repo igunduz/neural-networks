@@ -15,6 +15,11 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import random
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+from skimage.transform import PiecewiseAffineTransform, warp
 
 # for linear models 
 from sklearn.linear_model import SGDClassifier
@@ -78,7 +83,29 @@ def partition_load(pdf,SAMPLING_RATE = 8000):
     x = np.array(x)
     return x, y
 
-   
+def spec_augmentation(meta_filename, speaker='', num_augmentations=1, freq_masking=0.15, time_masking=0.20):
+    sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
+    sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
+    audio_files = sdr_df.query("speaker == '{}'".format(speaker))["file_drive"]
+    audio_files = audio_files.tolist()
+
+    augmented_data = []
+    labels =  []
+    for audio_file in audio_files:
+        signal, sr = librosa.load(audio_file, sr=8000)
+        for i in range(num_augmentations):
+            # apply SpecAugment     
+            signal_spec = spec_augment(signal, sr, freq_masking=freq_masking, time_masking=time_masking)
+            signal_spec = extract_melspectrogram(signal_spec, sr=8000, num_mels=13)
+            signal_orig = extract_melspectrogram(signal, sr=8000, num_mels=13)
+            # add the augmented signal and its corresponding label to the list
+            augmented_data.append(signal_spec.tolist())
+            augmented_data.append(signal_orig.tolist())
+            labels.append(sdr_df.loc[sdr_df['file_drive'] == audio_file, 'label'].iloc[0])
+            labels.append(sdr_df.loc[sdr_df['file_drive'] == audio_file, 'label'].iloc[0])
+    x = np.array(augmented_data)
+    return x, np.array(labels)
+
 #improved load_and_split works both for single-mutliple train/test seperation
 def load_and_split(meta_filename, speaker=''):
     sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
@@ -148,3 +175,52 @@ def plot_losses(train_losses, valid_losses, filename, val_type='Loss'):
     plt.legend()
     plt.savefig(filename)
     plt.clf()
+
+
+def spec_augment(signal, sr, num_mask=2, freq_masking=0.15, time_masking=0.20):
+    # compute spectrogram
+    n_fft = int(round(0.025 * sr))  # set n_fft based on the input sampling rate
+    S = librosa.stft(signal, n_fft=n_fft)
+
+
+    # apply frequency masking
+    num_freqs, num_times = S.shape
+    f_mask = num_mask
+    f_masking = int(freq_masking * num_freqs)
+    for _ in range(f_mask):
+        f0 = np.random.randint(0, num_freqs - f_masking)
+        df = np.random.randint(0, f_masking)
+        if f0 == 0 and f0 + df == 0:
+            continue
+        if f0 == num_freqs - f_masking and f0 + df == num_freqs:
+            continue
+        if f0 + df > num_freqs:
+            df = num_freqs - f0
+        mask_end = int(f0 + df)
+        S[f0:mask_end, :] = 0
+
+    # apply time masking
+    t_mask = num_mask
+    t_masking = int(time_masking * num_times)
+    for _ in range(t_mask):
+        t0 = np.random.randint(0, num_times - t_masking)
+        dt = np.random.randint(0, t_masking)
+        if t0 == 0 and t0 + dt == 0:
+            continue
+        if t0 == num_times - t_masking and t0 + dt == num_times:
+            continue
+        if t0 + dt > num_times:
+            dt = num_times - t0
+        mask_end = int(t0 + dt)
+        S[:, t0:mask_end] = 0
+
+    # compute inverse spectrogram
+    signal_aug = librosa.istft(S)
+
+    # ensure the augmented signal has the same length as the original
+    if len(signal_aug) > len(signal):
+        signal_aug = signal_aug[:len(signal)]
+    else:
+        signal_aug = np.pad(signal_aug, (0, max(0, len(signal) - len(signal_aug))), mode='constant')
+
+    return signal_aug

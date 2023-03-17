@@ -102,7 +102,7 @@ class SpeechToTextCNN(nn.Module):
 
     
 if __name__ == "__main__":
-    train, dev, test = load_and_split(None)
+    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv")
     num_classes = np.max(train[1].values.tolist()) + 1
     print("number of classes", num_classes)
 

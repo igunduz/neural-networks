@@ -96,3 +96,21 @@ plt.show()
 
 #TODO To complete task 3.2 , we need to have models 
 #TODO we need to seperate single person train and test datasets
+
+
+def spec_augumentation(meta_filename, speaker=''):
+    sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
+    sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
+    audio_files = sdr_df.query("speaker == '{}'".format(speaker))["file_drive"]
+    audio_files = audio_files.tolist()
+    # initialize an empty list to store the augmented signals
+    agu_signal_spec = []
+    for audio_file in audio_files:
+      signal, sr = librosa.load(audio_file, sr=8000)
+      # apply SpecAugment     
+      signal_spec = spec_augment(signal, sr)
+      # add the augmented signal to the list
+      agu_signal_spec.append(signal_spec)
+    # concatenate all augmented signals into a single signal
+    signal_spec = np.concatenate(agu_signal_spec)
+    return signal_spec, sr
