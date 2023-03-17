@@ -85,7 +85,7 @@ def partition_load(pdf,SAMPLING_RATE = 8000):
 
 def spec_augmentation(meta_filename, speaker='', num_augmentations=1, freq_masking=0.15, time_masking=0.20):
     sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
-    sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
+    #sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
     audio_files = sdr_df.query("speaker == '{}'".format(speaker))["file_drive"]
     audio_files = audio_files.tolist()
 
@@ -101,8 +101,8 @@ def spec_augmentation(meta_filename, speaker='', num_augmentations=1, freq_maski
             # add the augmented signal and its corresponding label to the list
             augmented_data.append(signal_spec.tolist())
             augmented_data.append(signal_orig.tolist())
-            labels.append(sdr_df.loc[sdr_df['file_drive'] == audio_file, 'label'].iloc[0])
-            labels.append(sdr_df.loc[sdr_df['file_drive'] == audio_file, 'label'].iloc[0])
+            labels.append(sdr_df.loc[sdr_df['file'] == audio_file, 'label'].iloc[0])
+            labels.append(sdr_df.loc[sdr_df['file'] == audio_file, 'label'].iloc[0])
     x = np.array(augmented_data)
     return x, np.array(labels)
 
