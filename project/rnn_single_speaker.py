@@ -96,7 +96,7 @@ if __name__ == "__main__":
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 1000
+    num_epochs = 50
     n_rnn_layers = 3
     hidden_dim_linear = [1024, 512, 256]
     single_batch_overfit = False
