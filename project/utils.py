@@ -25,7 +25,6 @@ from skimage.transform import PiecewiseAffineTransform, warp
 from sklearn.linear_model import SGDClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
-from sklearn.metrics import plot_confusion_matrix
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 

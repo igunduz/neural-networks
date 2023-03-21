@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 13 07:58:40 2023
-
-@author: kanubalad
-"""
-
 from utils import *
 from torch.utils.data import Dataset, DataLoader
 import torch
@@ -108,14 +100,14 @@ if __name__ == "__main__":
 
     num_mels = 13
     # Initialize the model
-    batch_size = 3 # 256
+    batch_size = 32 # 256
     input_size = num_mels
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 1000
+    num_epochs = 100
     single_batch_overfit = False
-    dropout=0.2
+    dropout=0.4
     print("variables intialized")
 
     save_model_every=10
@@ -132,9 +124,9 @@ if __name__ == "__main__":
     test_data = AudioDataset(test, num_mels=num_mels)
     dev_data = AudioDataset(dev, num_mels=num_mels)
     
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=16)
-    dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=20)
+    dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
     
     
 

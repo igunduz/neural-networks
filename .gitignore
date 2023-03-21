@@ -9,6 +9,10 @@ __pycache__/
 /speech_data/*
 
 # Distribution / packaging
+assignment-10/checkpoints/
+project/SDR_metadata.tsv
+project/checkpoints/
+project/speech_data/
 .Python
 build/
 develop-eggs/
