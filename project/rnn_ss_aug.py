@@ -119,7 +119,7 @@ class LSTMNetwork(nn.Module):
 if __name__ == "__main__":
     speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler']
     for speaker in speakers:
-        train, test = load_and_split(meta_filename="SDR_metadata.tsv", speaker=speaker)
+        train, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker= "george",isAG=True)
         num_classes = np.max(train[1].values.tolist()) + 1
         print("number of classes", num_classes)
 
@@ -143,7 +143,7 @@ if __name__ == "__main__":
         np.random.seed(seed)
         random.seed(seed)
 
-        model_name = f"single_speaker_rnn_{speaker}_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_dr{dropout}_lr{learning_rate}"
+        model_name = f"ss_rnn_{speaker}_specaug_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_dr{dropout}_lr{learning_rate}"
         if full_dropout:
             model_name += '_fdr'
         save_dir = f'checkpoints/{model_name}'

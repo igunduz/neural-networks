@@ -76,7 +76,7 @@ def downsample_spectrogram(X, N, pool="mean"):
     return padded_X_mean
 
 # prepare data and split 
-def partition_load(pdf,SAMPLING_RATE = 8000,isAG=False,num_augmentations=2):
+def partition_load2(pdf,SAMPLING_RATE = 8000,isAG=False,num_augmentations=2,isPA=False):
     y = pdf[['label']]
     x = list(map(lambda file_name: librosa.load(file_name, sr=SAMPLING_RATE)[0], pdf['file'].tolist())) 
     if isAG:
@@ -93,9 +93,34 @@ def partition_load(pdf,SAMPLING_RATE = 8000,isAG=False,num_augmentations=2):
         x = np.array(x)
     return x, y
     
+def partition_load(pdf, SAMPLING_RATE=8000, isAG=False, num_augmentations=2, isPA=False, pitch_steps=2):
+    y = pdf[['label']]
+    x = list(map(lambda file_name: librosa.load(file_name, sr=SAMPLING_RATE)[0], pdf['file'].tolist())) 
+    if isAG and not isPA:
+        augmented_x = []
+        for signal in x:
+            for i in range(num_augmentations):
+                signal_spec_aug = spec_augment(signal, sr=SAMPLING_RATE)
+                augmented_x.append(signal_spec_aug)
+        augmented_x = np.array(augmented_x)
+        augmented_y = pd.concat([y] * num_augmentations, ignore_index=True)
+        x = np.concatenate((x, augmented_x), axis=0)
+        y = pd.concat([y, augmented_y], ignore_index=True)
+    elif isPA and not isAG:
+        augmented_x = []
+        for signal in x:
+            signal_pitch_aug = librosa.effects.pitch_shift(signal, sr=SAMPLING_RATE, n_steps=2)
+            augmented_x.append(signal_pitch_aug)
+        augmented_x = np.array(augmented_x)
+        augmented_y = pd.concat([y] * len(augmented_x), ignore_index=True)
+        x = np.concatenate((x, augmented_x), axis=0)
+        y = pd.concat([y, augmented_y], ignore_index=True)
+    else:
+        x = np.array(x)
+    return x,y
 
 #improved load_and_split works both for single-mutliple train/test seperation
-def load_and_split(meta_filename, speaker='',isAG=False):
+def load_and_split(meta_filename, speaker='',isAG=False,isPA=False):
     sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
     if speaker == '':
         train = partition_load(sdr_df.query("split == 'TRAIN'"))
@@ -105,7 +130,7 @@ def load_and_split(meta_filename, speaker='',isAG=False):
     else:
         #sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
         speaker_data = sdr_df.query("speaker == '{}'".format(speaker))
-        train = partition_load(pdf=speaker_data,isAG=isAG)
+        train = partition_load(pdf=speaker_data,isAG=isAG,isPA=isPA)
         test = partition_load(pdf = sdr_df.query("speaker != '{}'".format(speaker))) 
         return train, test
 
