@@ -76,37 +76,26 @@ def downsample_spectrogram(X, N, pool="mean"):
     return padded_X_mean
 
 # prepare data and split 
-def partition_load(pdf,SAMPLING_RATE = 8000):
+def partition_load(pdf,SAMPLING_RATE = 8000,isAG=False,num_augmentations=2):
     y = pdf[['label']]
     x = list(map(lambda file_name: librosa.load(file_name, sr=SAMPLING_RATE)[0], pdf['file'].tolist())) 
-    x = np.array(x)
+    if isAG:
+        augmented_x = []
+        for signal in x:
+             for i in range(num_augmentations):
+               signal_spec_aug = spec_augment(signal, sr=SAMPLING_RATE)
+               augmented_x.append(signal_spec_aug)
+        augmented_x = np.array(augmented_x)
+        augmented_y = pd.concat([y] * num_augmentations, ignore_index=True)
+        x = np.concatenate((x, augmented_x), axis=0)
+        y = pd.concat([y, augmented_y], ignore_index=True)
+    else: 
+        x = np.array(x)
     return x, y
-
-def spec_augmentation(meta_filename, speaker='', num_augmentations=1, freq_masking=0.15, time_masking=0.20):
-    sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
-    #sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
-    audio_files = sdr_df.query("speaker == '{}'".format(speaker))["file_drive"]
-    audio_files = audio_files.tolist()
-
-    augmented_data = []
-    labels =  []
-    for audio_file in audio_files:
-        signal, sr = librosa.load(audio_file, sr=8000)
-        for i in range(num_augmentations):
-            # apply SpecAugment     
-            signal_spec = spec_augment(signal, sr, freq_masking=freq_masking, time_masking=time_masking)
-            # signal_spec = extract_melspectrogram(signal_spec, sr=8000, num_mels=13)
-            # signal_orig = extract_melspectrogram(signal, sr=8000, num_mels=13)
-            # add the augmented signal and its corresponding label to the list
-            augmented_data.append(signal_spec.tolist())
-            augmented_data.append(signal.tolist())
-            labels.append(sdr_df.loc[sdr_df['file'] == audio_file, 'label'].iloc[0])
-            labels.append(sdr_df.loc[sdr_df['file'] == audio_file, 'label'].iloc[0])
-    x = np.array(augmented_data)
-    return x, np.array(labels)
+    
 
 #improved load_and_split works both for single-mutliple train/test seperation
-def load_and_split(meta_filename, speaker=''):
+def load_and_split(meta_filename, speaker='',isAG=False):
     sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
     if speaker == '':
         train = partition_load(sdr_df.query("split == 'TRAIN'"))
@@ -116,8 +105,8 @@ def load_and_split(meta_filename, speaker=''):
     else:
         #sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
         speaker_data = sdr_df.query("speaker == '{}'".format(speaker))
-        train = partition_load(speaker_data)
-        test = partition_load(sdr_df.query("speaker != '{}'".format(speaker))) 
+        train = partition_load(pdf=speaker_data,isAG=isAG)
+        test = partition_load(pdf = sdr_df.query("speaker != '{}'".format(speaker))) 
         return train, test
 
 def preprocess(data, downsample_size=16, num_mels=13, pool='mean'):

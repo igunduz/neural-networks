@@ -103,10 +103,11 @@ class SpeechToTextCNN(nn.Module):
     
 if __name__ == "__main__":
     speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler']
-    train, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker= "george")
-    spec_train = spec_augmentation(meta_filename = "SDR_metadata.tsv", speaker= "george", num_augmentations=2, freq_masking=0.15, time_masking=0.20)
+    train, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker= "george",isAG=True)
+    #spec_train = spec_augmentation(meta_filename = "SDR_metadata.tsv", speaker= "george", num_augmentations=2, freq_masking=0.15, time_masking=0.20)
 
-    num_classes = np.max(train[1].values.tolist()) + 1
+    #num_classes = np.max(train[1].values.tolist()) + 1
+    num_classes = np.max(pd.DataFrame(train[1]).values.tolist()) + 1
     print("number of classes", num_classes)
 
     num_mels = 13
@@ -127,11 +128,11 @@ if __name__ == "__main__":
     np.random.seed(seed)
     random.seed(seed)
 
-    model_name = f"george_cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
+    model_name = f"george_aug_cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
-    train_data = AudioDataset(spec_train, num_mels=num_mels)
+    train_data = AudioDataset(train, num_mels=num_mels)
     test_data = AudioDataset(test, num_mels=num_mels)
    # dev_data = AudioDataset(dev, num_mels=num_mels)
     

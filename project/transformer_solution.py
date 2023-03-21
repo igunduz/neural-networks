@@ -144,7 +144,7 @@ if __name__ == "__main__":
         model.train()
         train_loss = 0.0
         train_correct = 0
-
+        total_train = 0
         for features, lengths, label in train_loader:
             features = features.to(device) # B x Seq len x Num mels
             label = label.to(device)
@@ -163,12 +163,12 @@ if __name__ == "__main__":
 
             train_loss += loss.item() * features.size(0)
             train_correct += (torch.argmax(output, dim=1) == label).sum().item()
-            
+            total_train += features.size(0)
             if single_batch_overfit:
                 break
 
-        train_loss /= len(train_data)
-        train_accuracy = train_correct / len(train_data)
+        train_loss /= total_train # fix calculation of train_loss
+        train_accuracy = train_correct / total_train
         
         if single_batch_overfit:
             train_accuracy = train_correct / batch_size
@@ -178,7 +178,7 @@ if __name__ == "__main__":
         model.eval()
         val_loss = 0.0
         val_correct = 0
-    
+        total_val = 0
         if not single_batch_overfit:
             with torch.no_grad():
                 for features, lengths, label in dev_loader:
@@ -189,12 +189,13 @@ if __name__ == "__main__":
 
                     val_loss += loss.item() * features.size(0)
                     val_correct += (torch.argmax(output, dim=1) == label).sum().item()
+                    total_val += features.size(0)
         else:
             val_loss = 0.0
             val_correct = 0
         
-        val_loss /= len(dev_data)
-        val_accuracy = val_correct / len(dev_data)
+        val_loss /= total_val # fix calculation of val_loss
+        val_accuracy = val_correct / total_val # fix calculation of val_accuracy
         valid_losses.append(val_loss)
         valid_accs.append(val_accuracy)
 
