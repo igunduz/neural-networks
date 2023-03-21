@@ -176,8 +176,6 @@ if __name__ == "__main__":
 
         train_loss /= total_train # fix calculation of train_loss
         train_accuracy = train_correct / total_train
-        #train_loss /= len(train_data)
-        #train_accuracy = train_correct / len(train_data)
         train_losses.append(train_loss)
         train_accs.append(train_accuracy)
     
