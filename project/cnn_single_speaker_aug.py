@@ -111,14 +111,14 @@ if __name__ == "__main__":
 
     num_mels = 13
     # Initialize the model
-    batch_size = 2 # 256
+    batch_size = 32 # 256
     input_size = num_mels
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 1
+    num_epochs = 50
     single_batch_overfit = False
-    dropout=0.2
+    dropout=0.4
     print("variables intialized")
 
     save_model_every=10
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     np.random.seed(seed)
     random.seed(seed)
 
-    model_name = f"cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
+    model_name = f"george_cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     

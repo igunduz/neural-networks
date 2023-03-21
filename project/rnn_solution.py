@@ -85,7 +85,7 @@ class LSTMNetwork(nn.Module):
     
     
 if __name__ == "__main__":
-    train, dev, test = load_and_split(None)
+    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv")
     num_classes = np.max(train[1].values.tolist()) + 1
     print("number of classes", num_classes)
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 1000
+    num_epochs = 50
     n_rnn_layers = 3
     hidden_dim_linear = [1024, 512, 256]
     single_batch_overfit = False

@@ -107,7 +107,7 @@ if __name__ == "__main__":
 
 
     learning_rate = 1e-4
-    num_epochs = 1000
+    num_epochs = 50
     single_batch_overfit = False
 
     model_name = f"tr_hs{hidden_size}_nh{num_heads}_bs{batch_size}_nl{num_att_layers}_dr{dropout}_lr{learning_rate}"
@@ -118,9 +118,9 @@ if __name__ == "__main__":
     test_data = AudioDataset(test, num_mels=num_mels)
     dev_data = AudioDataset(dev, num_mels=num_mels)
     
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=16)
-    dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=20)
+    dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
     
     
 

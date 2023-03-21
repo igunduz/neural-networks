@@ -105,7 +105,7 @@ if __name__ == "__main__":
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 100
+    num_epochs = 50
     single_batch_overfit = False
     dropout=0.4
     print("variables intialized")
