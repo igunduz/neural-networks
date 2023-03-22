@@ -8,7 +8,7 @@ import torch.nn.init as weight_init
 from config_loader import *
 
 import logging
-from sklearn.metrics import f1_score, confusion_matrix, precision_score, recall_score
+from sklearn.metrics import f1_score, confusion_matrix, precision_score, recall_score, classification_report
 
 
 class AudioDataset(Dataset):
@@ -89,39 +89,48 @@ class SpeechToTextCNN(nn.Module):
         x = self.dropout3(x)
         x = x.transpose(1,2)
 
-        
-
         x = x.mean(dim=1) # Global average pooling
+        last_layer = x
         x = self.fc(x)
 
-        return x
+        return x, last_layer
 
-def evaluate(model, test_loader, device, logger):
+def evaluate(model, test_loader, device, logger, filename):
+    
+    from sklearn.manifold import TSNE
+    import matplotlib.pyplot as plt
+    import matplotlib
+    matplotlib.use('Agg')
+    
+    
     with torch.no_grad():
         model.eval()
         y_pred = []
         y_true = []
+        feats = []
         for features, lengths, label in test_loader:
             features = features.to(device)
             # lengths = lengths.to(device)
             label = label.to(device)
             optimizer.zero_grad()
-            output = model(features)
-            
+            output, last_layer = model(features)
+            feats.append(last_layer.cpu().numpy())
             pred = torch.argmax(output, dim=1).squeeze().cpu().numpy().tolist()
             label = label.squeeze().cpu().numpy().tolist()
             
             y_pred += pred
             y_true += label
         
+        feats = np.concatenate (feats, axis=0)
+        
         # Compute the F1 score
-        f1 = f1_score(y_true, y_pred, average='micro')
+        f1 = f1_score(y_true, y_pred, average='macro')
         print("F1 score:", f1)
         logging.info(f"\nF1 score:{f1}")
 
         # Compute the precision and recall
-        precision = precision_score(y_true, y_pred, average='micro')
-        recall = recall_score(y_true, y_pred, average='micro')
+        precision = precision_score(y_true, y_pred, average='macro')
+        recall = recall_score(y_true, y_pred, average='macro')
         print("Precision:", precision)
         print("Recall:", recall)
 
@@ -136,6 +145,27 @@ def evaluate(model, test_loader, device, logger):
             
         logging.info("\nConfusion matrix:")
         logging.info(cm)
+        
+        clf_report = classification_report(y_true, y_pred)
+        print (clf_report)
+        
+        tsne_output = TSNE(n_components=2).fit_transform(feats)
+
+        # Plot the reduced-dimensional data in a scatter plot, colored by the true labels
+        color_map = plt.cm.get_cmap('gist_ncar', 10)
+
+        for i in range(10):
+            mask = np.array(y_true) == i
+            # ax.scatter(tsne_output[mask][:,0], tsne_output[mask][:,1], c=color_map(i)[:3], label=f'{i}')        
+            plt.scatter(tsne_output[mask][:,0], tsne_output[mask][:,1], c=(np.random.rand(), np.random.rand(), np.random.rand()), label=f'{i}')        
+        plt.legend()
+
+        # Add axis labels and a title
+        plt.xlabel('1st dim')
+        plt.ylabel('2nd dim')
+        plt.savefig(filename)
+        # plt.clf()
+        
         
     
 if __name__ == "__main__":
@@ -211,7 +241,7 @@ if __name__ == "__main__":
             # lengths = lengths.to(device)
             label = label.to(device)
             optimizer.zero_grad()
-            output = model(features)
+            output, last_layer = model(features)
             loss = criterion(output, label)
     
             loss.backward()
@@ -242,7 +272,7 @@ if __name__ == "__main__":
                 for features, lengths, label in test_loader:
                     features = features.to(device)
                     label = label.to(device)
-                    output = model(features)
+                    output, last_layer = model(features)
                     loss = criterion(output, label)
     
                     val_loss += loss.item() * features.size(0)
@@ -286,5 +316,10 @@ if __name__ == "__main__":
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
+    plot_file_name = save_dir + '/'
+    print (plot_file_name)
+    evaluate(model, test_loader, device, logger, plot_file_name + "_tsne.png")
     
-    evaluate(model, test_loader, device, logger)
+    
+    
+    

@@ -11,6 +11,10 @@ from config_loader import get_config
 import logging
 from sklearn.metrics import f1_score, confusion_matrix, precision_score, recall_score
 
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+import matplotlib
+
 class AudioDataset(Dataset):
     def __init__(self, data, num_mels=13):
         X, y = data
@@ -102,37 +106,41 @@ class TransformerModel(nn.Module):
         # Mean of all output token in the sequence (dim=1)
         output_seq = output_seq.mean(1)
         
+        last_layers = output_seq
         # Apply output layer
         output_seq = self.output(output_seq)
         
-        return output_seq
+        return output_seq, last_layers
 
-def evaluate(model, test_loader, device, logger):
+def evaluate(model, test_loader, device, logger, filename):
     with torch.no_grad():
         model.eval()
         y_pred = []
         y_true = []
+        feats = []
         for features, lengths, label in test_loader:
             features = features.to(device)
             # lengths = lengths.to(device)
             label = label.to(device)
             optimizer.zero_grad()
-            output = model(features)
+            output, last_layer = model(features)
+            feats.append(last_layer.cpu().numpy())
             
             pred = torch.argmax(output, dim=1).squeeze().cpu().numpy().tolist()
             label = label.squeeze().cpu().numpy().tolist()
             
             y_pred += pred
             y_true += label
+        feats = np.concatenate (feats, axis=0)
         
         # Compute the F1 score
-        f1 = f1_score(y_true, y_pred, average='micro')
+        f1 = f1_score(y_true, y_pred, average='macro')
         print("F1 score:", f1)
         logging.info(f"\nF1 score:{f1}")
 
         # Compute the precision and recall
-        precision = precision_score(y_true, y_pred, average='micro')
-        recall = recall_score(y_true, y_pred, average='micro')
+        precision = precision_score(y_true, y_pred, average='macro')
+        recall = recall_score(y_true, y_pred, average='macro')
         print("Precision:", precision)
         print("Recall:", recall)
 
@@ -148,8 +156,27 @@ def evaluate(model, test_loader, device, logger):
         logging.info("\nConfusion matrix:")
         logging.info(cm)
         
+        logging.info("\nConfusion matrix:")
+        logging.info(cm)
+        
+        clf_report = classification_report(y_true, y_pred)
+        print (clf_report)
+        
+        tsne_output = TSNE(n_components=2).fit_transform(feats)
 
-    
+        # Plot the reduced-dimensional data in a scatter plot, colored by the true labels
+        color_map = plt.cm.get_cmap('gist_ncar', 10)
+
+        for i in range(10):
+            mask = np.array(y_true) == i
+            # ax.scatter(tsne_output[mask][:,0], tsne_output[mask][:,1], c=color_map(i)[:3], label=f'{i}')        
+            plt.scatter(tsne_output[mask][:,0], tsne_output[mask][:,1], c=(np.random.rand(), np.random.rand(), np.random.rand()), label=f'{i}')        
+        plt.legend()
+
+        # Add axis labels and a title
+        plt.xlabel('1st dim')
+        plt.ylabel('2nd dim')
+        plt.savefig(filename)
     
 if __name__ == "__main__":
     speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler'][:4]
@@ -194,7 +221,6 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=20)
     dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
     
-    
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = TransformerModel(input_size, hidden_size, output_size, num_heads, num_att_layers, dropout).to(device)
@@ -225,7 +251,7 @@ if __name__ == "__main__":
             label = label.to(device)
             optimizer.zero_grad()
 
-            output = model(features)
+            output, _ = model(features)
 
             # print (torch.argmax(output, 1))
 
@@ -259,7 +285,7 @@ if __name__ == "__main__":
                 for features, lengths, label in dev_loader:
                     features = features.to(device)
                     label = label.to(device)
-                    output = model(features)
+                    output, _ = model(features)
                     loss = criterion(output, label)
 
                     val_loss += loss.item() * features.size(0)
@@ -304,5 +330,5 @@ if __name__ == "__main__":
     print ("best validation accuracy: ", best_val, flush=True)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
-        
-    evaluate(model, test_loader, device, logger)
+    plot_file_name = save_dir + '/'
+    evaluate(model, test_loader, device, logger, plot_file_name + "_tsne.png")

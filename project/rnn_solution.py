@@ -11,6 +11,10 @@ from config_loader import *
 from sklearn.metrics import f1_score, confusion_matrix, precision_score, recall_score
 import logging
 
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+import matplotlib
+
 class AudioDataset(Dataset):
     def __init__(self, data, num_mels=13):
         X, y = data
@@ -83,25 +87,30 @@ class LSTMNetwork(nn.Module):
         output = self.linear_in(output)
         for linear_layer in self.linear_layers:
             output = linear_layer(output)
-        return self.fc(output.squeeze(0))
+        last_layer = output
+        return self.fc(output.squeeze(0)), last_layer
     
-def evaluate(model, test_loader, device, logger):
+def evaluate(model, test_loader, device, logger, filename):
     with torch.no_grad():
         model.eval()
         y_pred = []
         y_true = []
+        feats = []
         for features, lengths, label in test_loader:
             features = features.to(device)
             # lengths = lengths.to(device)
             label = label.to(device)
             optimizer.zero_grad()
-            output = model(features, lengths)
+            output, last_layer = model(features, lengths)
+
+            feats.append(last_layer.cpu().numpy())
             
             pred = torch.argmax(output, dim=1).squeeze().cpu().numpy().tolist()
             label = label.squeeze().cpu().numpy().tolist()
             
             y_pred += pred
             y_true += label
+        feats = np.concatenate (feats, axis=0)
         
         # Compute the F1 score
         f1 = f1_score(y_true, y_pred, average='micro')
@@ -121,10 +130,30 @@ def evaluate(model, test_loader, device, logger):
         cm = confusion_matrix(y_true, y_pred)
         print("Confusion matrix:")
         print(cm)
-
             
         logging.info("\nConfusion matrix:")
         logging.info(cm)
+        
+        clf_report = classification_report(y_true, y_pred)
+        print (clf_report)
+        
+        tsne_output = TSNE(n_components=2).fit_transform(feats)
+
+        # Plot the reduced-dimensional data in a scatter plot, colored by the true labels
+        color_map = plt.cm.get_cmap('gist_ncar', 10)
+
+        for i in range(10):
+            mask = np.array(y_true) == i
+            # ax.scatter(tsne_output[mask][:,0], tsne_output[mask][:,1], c=color_map(i)[:3], label=f'{i}')        
+            plt.scatter(tsne_output[mask][:,0], tsne_output[mask][:,1], c=(np.random.rand(), np.random.rand(), np.random.rand()), label=f'{i}')        
+        plt.legend()
+
+        # Add axis labels and a title
+        plt.xlabel('1st dim')
+        plt.ylabel('2nd dim')
+        plt.savefig(filename)
+        print (filename)
+        print ("saved")
     
 if __name__ == "__main__":    
     speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler'][:4]
@@ -203,7 +232,7 @@ if __name__ == "__main__":
             # lengths = lengths.to(device)
             label = label.to(device)
             optimizer.zero_grad()
-            output = model(features, lengths)
+            output, _ = model(features, lengths)
             loss = criterion(output, label)
 
             loss.backward()
@@ -232,7 +261,7 @@ if __name__ == "__main__":
                 for features, lengths, label in dev_loader:
                     features = features.to(device)
                     label = label.to(device)
-                    output = model(features, lengths)
+                    output, _ = model(features, lengths)
                     loss = criterion(output, label)
 
                     val_loss += loss.item() * features.size(0)
@@ -271,10 +300,15 @@ if __name__ == "__main__":
         print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
     
         # Early stopping
-        if not_decreasing_val_cnt >= 15: 
+        if not_decreasing_val_cnt >= 15 and epoch + 1 >= 50: 
             break
 
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
-    evaluate(model, test_loader, device, logger)
+    plot_file_name = save_dir + '/'
+    evaluate(model, test_loader, device, logger, plot_file_name + "_tsne.png")
+    
+    
+    print (plot_file_name)
+    
