@@ -115,7 +115,7 @@ if __name__ == "__main__":
     learning_rate = 1e-3
     num_epochs = 1000
     single_batch_overfit = False
-    dropout=0.2
+    dropout=0.4
     print("variables intialized")
 
     save_model_every=10
