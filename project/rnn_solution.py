@@ -6,6 +6,10 @@ import torch.nn.functional as F
 import torch.nn.init as weight_init
 import random
 
+from config_loader import *
+
+from sklearn.metrics import f1_score, confusion_matrix, precision_score, recall_score
+import logging
 
 class AudioDataset(Dataset):
     def __init__(self, data, num_mels=13):
@@ -35,8 +39,6 @@ class PadSequence:
         # Don't forget to grab the labels of the *sorted* batch
         labels = torch.LongTensor([x[1] for x in sorted_batch])
         return sequences_padded, lengths, labels
-    
-
     
 class LSTMNetwork(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, n_rnn_layers, hidden_dim_linear, dropout, full_dropout, device):
@@ -83,33 +85,79 @@ class LSTMNetwork(nn.Module):
             output = linear_layer(output)
         return self.fc(output.squeeze(0))
     
+def evaluate(model, test_loader, device, logger):
+    with torch.no_grad():
+        model.eval()
+        y_pred = []
+        y_true = []
+        for features, lengths, label in test_loader:
+            features = features.to(device)
+            # lengths = lengths.to(device)
+            label = label.to(device)
+            optimizer.zero_grad()
+            output = model(features, lengths)
+            
+            pred = torch.argmax(output, dim=1).squeeze().cpu().numpy().tolist()
+            label = label.squeeze().cpu().numpy().tolist()
+            
+            y_pred += pred
+            y_true += label
+        
+        # Compute the F1 score
+        f1 = f1_score(y_true, y_pred, average='micro')
+        print("F1 score:", f1)
+        logging.info(f"\nF1 score:{f1}")
+
+        # Compute the precision and recall
+        precision = precision_score(y_true, y_pred, average='micro')
+        recall = recall_score(y_true, y_pred, average='micro')
+        print("Precision:", precision)
+        print("Recall:", recall)
+
+        logging.info(f"\nPrecision: {precision}")
+        logging.info(f"\nRecall: {recall}")
+
+        # Compute the confusion matrix
+        cm = confusion_matrix(y_true, y_pred)
+        print("Confusion matrix:")
+        print(cm)
+
+            
+        logging.info("\nConfusion matrix:")
+        logging.info(cm)
     
-if __name__ == "__main__":
-    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv")
+if __name__ == "__main__":    
+    speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler'][:4]
+    speakers_selected = ['nicolas', 'theo' , 'jackson',  'george']
+    
+    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker=speakers_selected)
+    
     num_classes = np.max(train[1].values.tolist()) + 1
     print("number of classes", num_classes)
 
+    cfg = get_config()
+
     num_mels = 13
     # Initialize the model
-    batch_size = 256
+    batch_size = cfg.batch_size
     input_size = num_mels
-    hidden_size = 256
+    hidden_size = cfg.hidden_size
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 50
-    n_rnn_layers = 3
+    num_epochs = cfg.num_epochs
+    n_rnn_layers = cfg.n_rnn_layers
     hidden_dim_linear = [1024, 512, 256]
     single_batch_overfit = False
-    dropout = 0.6
+    dropout = cfg.dropout
     full_dropout = True
 
-    save_model_every=10
+    save_model_every=50
     seed = 43
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
-    model_name = f"rnn_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_dr{dropout}_lr{learning_rate}"
+    model_name = cfg.name + f"_rnn_hs{hidden_size}_bs{batch_size}_nl{n_rnn_layers}_dr{dropout}_lr{learning_rate}"
     if full_dropout:
         model_name += '_fdr'
     save_dir = f'checkpoints/{model_name}'
@@ -140,6 +188,10 @@ if __name__ == "__main__":
     valid_losses = []
     train_accs = []
     valid_accs = []
+    
+    logger = logging.basicConfig(filename=save_dir + f'/log.txt', level=logging.INFO, format='')
+    logging.info(f"num params: {num_params}")
+    
     
     for epoch in range(num_epochs):
         model.train()
@@ -219,10 +271,10 @@ if __name__ == "__main__":
         print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
     
         # Early stopping
-        if not_decreasing_val_cnt >= 100: 
+        if not_decreasing_val_cnt >= 15: 
             break
 
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
-    
+    evaluate(model, test_loader, device, logger)

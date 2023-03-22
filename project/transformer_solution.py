@@ -4,9 +4,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as weight_init
-import os
-import random
+import os, random, math
 
+from config_loader import get_config
+
+import logging
+from sklearn.metrics import f1_score, confusion_matrix, precision_score, recall_score
 
 class AudioDataset(Dataset):
     def __init__(self, data, num_mels=13):
@@ -37,8 +40,27 @@ class PadSequence:
         labels = torch.LongTensor([x[1] for x in sorted_batch])
         return sequences_padded, lengths, labels
     
-
+# Reference: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+class PositionalEncoding(nn.Module):
     
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 1000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
 
 class TransformerModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_heads, num_layers, dropout):
@@ -52,6 +74,8 @@ class TransformerModel(nn.Module):
         # Define input embedding layer
         self.embedding = nn.Linear(input_size, hidden_size)
         
+        self.pos_encoding = PositionalEncoding(hidden_size, dropout)
+        
         # Define transformer encoder layer
         self.transformer_encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(hidden_size, num_heads, dropout=dropout)
@@ -63,14 +87,16 @@ class TransformerModel(nn.Module):
     def forward(self, input_seq):
         # Apply input embedding
         embedded_seq = self.embedding(input_seq)
+        embedded_seq = self.pos_encoding(embedded_seq)
         
-        # Transpose input for transformer encoder layer
+        # Transpose input for transformer encoder layer -> [seq_len, batch_size, feat_size]
         embedded_seq = embedded_seq.transpose(0, 1)
+        
         
         # Apply transformer encoder layer
         output_seq = self.transformer_encoder(embedded_seq)
         
-        # Transpose output to original shape
+        # Transpose output to original shape -> [batch_size, seq_len, feat_size]
         output_seq = output_seq.transpose(0, 1)
 
         # Mean of all output token in the sequence (dim=1)
@@ -81,25 +107,71 @@ class TransformerModel(nn.Module):
         
         return output_seq
 
+def evaluate(model, test_loader, device, logger):
+    with torch.no_grad():
+        model.eval()
+        y_pred = []
+        y_true = []
+        for features, lengths, label in test_loader:
+            features = features.to(device)
+            # lengths = lengths.to(device)
+            label = label.to(device)
+            optimizer.zero_grad()
+            output = model(features)
+            
+            pred = torch.argmax(output, dim=1).squeeze().cpu().numpy().tolist()
+            label = label.squeeze().cpu().numpy().tolist()
+            
+            y_pred += pred
+            y_true += label
+        
+        # Compute the F1 score
+        f1 = f1_score(y_true, y_pred, average='micro')
+        print("F1 score:", f1)
+        logging.info(f"\nF1 score:{f1}")
+
+        # Compute the precision and recall
+        precision = precision_score(y_true, y_pred, average='micro')
+        recall = recall_score(y_true, y_pred, average='micro')
+        print("Precision:", precision)
+        print("Recall:", recall)
+
+        logging.info(f"\nPrecision: {precision}")
+        logging.info(f"\nRecall: {recall}")
+
+        # Compute the confusion matrix
+        cm = confusion_matrix(y_true, y_pred)
+        print("Confusion matrix:")
+        print(cm)
+
+            
+        logging.info("\nConfusion matrix:")
+        logging.info(cm)
+        
 
     
     
 if __name__ == "__main__":
-    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv")
-    num_classes = np.max(train[1].values.tolist()) + 1
-    print("number of classes", num_classes)
-
-    num_mels = 13
-    # Initialize the model
-    batch_size = 128
-    input_size = num_mels
-    hidden_size = 128
-    output_size = num_classes
-    num_heads = 8
-    num_att_layers = 4
-    dropout=0.4
+    speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler'][:4]
+    speakers_selected = ['nicolas', 'theo' , 'jackson',  'george']
     
-    save_model_every=10
+    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker=speakers_selected)
+    num_classes = np.max(train[1].values.tolist()) + 1
+    print("number of classes", num_classes, flush=True)
+    
+    cfg = get_config()
+
+    num_mels = cfg.num_mels
+    # Initialize the model
+    batch_size = cfg.batch_size
+    input_size = num_mels
+    hidden_size = cfg.hidden_size
+    output_size = num_classes
+    num_heads = cfg.num_heads
+    num_att_layers = cfg.num_att_layers
+    dropout=cfg.dropout
+    
+    save_model_every=50
     seed = 43
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -107,10 +179,10 @@ if __name__ == "__main__":
 
 
     learning_rate = 1e-4
-    num_epochs = 50
+    num_epochs = cfg.num_epochs
     single_batch_overfit = False
 
-    model_name = f"tr_hs{hidden_size}_nh{num_heads}_bs{batch_size}_nl{num_att_layers}_dr{dropout}_lr{learning_rate}"
+    model_name = cfg.name + f"_ntr_hs{hidden_size}_nh{num_heads}_bs{batch_size}_nl{num_att_layers}_dr{dropout}_lr{learning_rate}"
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
@@ -128,7 +200,7 @@ if __name__ == "__main__":
     model = TransformerModel(input_size, hidden_size, output_size, num_heads, num_att_layers, dropout).to(device)
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print("Number of trainable parameters:", num_params)
+    print("Number of trainable parameters:", num_params, flush=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
@@ -139,7 +211,10 @@ if __name__ == "__main__":
     valid_losses = []
     train_accs = []
     valid_accs = []
-
+    
+    logger = logging.basicConfig(filename=save_dir + f'/log.txt', level=logging.INFO, format='')
+    logging.info(f"num params: {num_params}")
+    
     for epoch in range(start_epoch, num_epochs):
         model.train()
         train_loss = 0.0
@@ -219,12 +294,15 @@ if __name__ == "__main__":
             plot_losses(train_losses, valid_losses, plot_file_name + '_loss.png', val_type='Loss')
             plot_losses(train_accs, valid_accs, plot_file_name + '_acc.png', val_type='Acc')
 
-        print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
+        print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, \
+            Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy), flush=True)
     
         # Early stopping
-        if not_decreasing_val_cnt >= 100: 
+        if not_decreasing_val_cnt >= 15 and epoch + 1 >= 50: 
             break
     
-    print ("best validation accuracy: ", best_val)
+    print ("best validation accuracy: ", best_val, flush=True)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
+        
+    evaluate(model, test_loader, device, logger)

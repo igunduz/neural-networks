@@ -5,6 +5,10 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as weight_init
+from config_loader import *
+
+import logging
+from sklearn.metrics import f1_score, confusion_matrix, precision_score, recall_score
 
 
 class AudioDataset(Dataset):
@@ -92,31 +96,75 @@ class SpeechToTextCNN(nn.Module):
 
         return x
 
+def evaluate(model, test_loader, device, logger):
+    with torch.no_grad():
+        model.eval()
+        y_pred = []
+        y_true = []
+        for features, lengths, label in test_loader:
+            features = features.to(device)
+            # lengths = lengths.to(device)
+            label = label.to(device)
+            optimizer.zero_grad()
+            output = model(features)
+            
+            pred = torch.argmax(output, dim=1).squeeze().cpu().numpy().tolist()
+            label = label.squeeze().cpu().numpy().tolist()
+            
+            y_pred += pred
+            y_true += label
+        
+        # Compute the F1 score
+        f1 = f1_score(y_true, y_pred, average='micro')
+        print("F1 score:", f1)
+        logging.info(f"\nF1 score:{f1}")
+
+        # Compute the precision and recall
+        precision = precision_score(y_true, y_pred, average='micro')
+        recall = recall_score(y_true, y_pred, average='micro')
+        print("Precision:", precision)
+        print("Recall:", recall)
+
+        logging.info(f"\nPrecision: {precision}")
+        logging.info(f"\nRecall: {recall}")
+
+        # Compute the confusion matrix
+        cm = confusion_matrix(y_true, y_pred)
+        print("Confusion matrix:")
+        print(cm)
+
+            
+        logging.info("\nConfusion matrix:")
+        logging.info(cm)
+        
     
 if __name__ == "__main__":
-    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv")
+    speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler'][:4]
+    speakers_selected = ['nicolas', 'theo' , 'jackson',  'george']
+    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker=speakers_selected)
+    cfg = get_config()
     num_classes = np.max(train[1].values.tolist()) + 1
     print("number of classes", num_classes)
 
-    num_mels = 13
+    num_mels = cfg.num_mels
     # Initialize the model
-    batch_size = 32 # 256
+    batch_size = cfg.batch_size
     input_size = num_mels
-    hidden_size = 256
+    hidden_size = cfg.hidden_size
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 50
+    num_epochs = cfg.num_epochs
     single_batch_overfit = False
-    dropout=0.4
+    dropout=cfg.dropout
     print("variables intialized")
 
-    save_model_every=10
+    save_model_every=50
     seed = 43
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
-    model_name = f"cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
+    model_name = cfg.name + f"_cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
@@ -135,6 +183,7 @@ if __name__ == "__main__":
                          output_size=num_classes, dropout_prob=dropout).to(device)
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    
     print("Number of trainable parameters:", num_params)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -146,6 +195,9 @@ if __name__ == "__main__":
     valid_losses = []
     train_accs = []
     valid_accs = []
+
+    logger = logging.basicConfig(filename=save_dir + f'/log.txt', level=logging.INFO, format='%(message)s')
+    logging.info(f"num params: {num_params}")
 
 
     print("starting the training")
@@ -227,7 +279,12 @@ if __name__ == "__main__":
     
         print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
         
+        # Early stopping
+        if not_decreasing_val_cnt >= 15 and epoch + 1 >= 50: 
+            break
         
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
+    
+    evaluate(model, test_loader, device, logger)

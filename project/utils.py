@@ -92,6 +92,43 @@ def partition_load2(pdf,SAMPLING_RATE = 8000,isAG=False,num_augmentations=2,isPA
     else: 
         x = np.array(x)
     return x, y
+
+def evaluate(model, test_loader, device, logger):
+    with torch.no_grad():
+        model.eval()
+        y_pred = []
+        y_true = []
+        for features, lengths, label in test_loader:
+            features = features.to(device)
+            # lengths = lengths.to(device)
+            label = label.to(device)
+            optimizer.zero_grad()
+            output = model(features)
+            
+            pred = torch.argmax(output, dim=1).squeeze().cpu().numpy().tolist()
+            label = label.squeeze().cpu().numpy().tolist()
+            
+            y_pred += pred
+            y_true += label
+        
+        # Compute the F1 score
+        f1 = f1_score(y_true, y_pred, average='micro')
+        print("F1 score:", f1)
+        logging.info("F1 score:", f1)
+
+        # Compute the precision and recall
+        precision = precision_score(y_true, y_pred, average='micro')
+        recall = recall_score(y_true, y_pred, average='micro')
+        print("Precision:", precision)
+        print("Recall:", recall)
+
+        logging.info("Precision:", precision)
+        logging.info("Recall:", recall)
+
+        # Compute the confusion matrix
+        cm = confusion_matrix(y_true, y_pred)
+        print("Confusion matrix:")
+        print(cm)
     
 def partition_load(pdf, SAMPLING_RATE=8000, isAG=False, num_augmentations=2, isPA=False, pitch_steps=2):
     y = pdf[['label']]
@@ -122,8 +159,9 @@ def partition_load(pdf, SAMPLING_RATE=8000, isAG=False, num_augmentations=2, isP
 #improved load_and_split works both for single-mutliple train/test seperation
 def load_and_split(meta_filename, speaker='',isAG=False,isPA=False):
     sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
-    if speaker == '':
-        train = partition_load(sdr_df.query("split == 'TRAIN'"))
+    if isinstance(speaker, list):
+        train_df = sdr_df[sdr_df['speaker'].isin(speaker)]
+        train = partition_load(train_df.query(f"split == 'TRAIN'"))
         test = partition_load(sdr_df.query("split == 'TEST'"))
         dev = partition_load(sdr_df.query("split == 'DEV'"))
         return train, dev, test
@@ -182,7 +220,7 @@ def plot_losses(train_losses, valid_losses, filename, val_type='Loss'):
     plt.figure(figsize=(10,10))
     plt.plot(epochs, train_losses, 'b', label=f'Training {val_type}')
     plt.plot(epochs, valid_losses, 'r', label=f'Validation {val_type}')
-    plt.title('Training and validation loss')
+    plt.title(f'Training and validation {val_type}')
     plt.xlabel('Epoch')
     plt.ylabel(val_type)
     plt.legend()
