@@ -15,12 +15,16 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import random
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+from skimage.transform import PiecewiseAffineTransform, warp
 
 # for linear models 
 from sklearn.linear_model import SGDClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
-from sklearn.metrics import plot_confusion_matrix
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 
@@ -72,19 +76,63 @@ def downsample_spectrogram(X, N, pool="mean"):
     return padded_X_mean
 
 # prepare data and split 
-def partition_load(pdf,SAMPLING_RATE = 8000):
+def partition_load2(pdf,SAMPLING_RATE = 8000,isAG=False,num_augmentations=2,isPA=False):
     y = pdf[['label']]
     x = list(map(lambda file_name: librosa.load(file_name, sr=SAMPLING_RATE)[0], pdf['file'].tolist())) 
-    x = np.array(x)
+    if isAG:
+        augmented_x = []
+        for signal in x:
+             for i in range(num_augmentations):
+               signal_spec_aug = spec_augment(signal, sr=SAMPLING_RATE)
+               augmented_x.append(signal_spec_aug)
+        augmented_x = np.array(augmented_x)
+        augmented_y = pd.concat([y] * num_augmentations, ignore_index=True)
+        x = np.concatenate((x, augmented_x), axis=0)
+        y = pd.concat([y, augmented_y], ignore_index=True)
+    else: 
+        x = np.array(x)
     return x, y
     
-def load_and_split(meta_filename):
-    sdr_df = pd.read_csv('SDR_metadata.tsv', sep='\t', header=0, index_col='Unnamed: 0')
-    train = partition_load(sdr_df.query("split == 'TRAIN'"))
-    test = partition_load(sdr_df.query("split == 'TEST'"))
-    dev = partition_load(sdr_df.query("split == 'DEV'"))
-    
-    return train, dev, test
+def partition_load(pdf, SAMPLING_RATE=8000, isAG=False, num_augmentations=2, isPA=False, pitch_steps=2):
+    y = pdf[['label']]
+    x = list(map(lambda file_name: librosa.load(file_name, sr=SAMPLING_RATE)[0], pdf['file'].tolist())) 
+    if isAG and not isPA:
+        augmented_x = []
+        for signal in x:
+            for i in range(num_augmentations):
+                signal_spec_aug = spec_augment(signal, sr=SAMPLING_RATE)
+                augmented_x.append(signal_spec_aug)
+        augmented_x = np.array(augmented_x)
+        augmented_y = pd.concat([y] * num_augmentations, ignore_index=True)
+        x = np.concatenate((x, augmented_x), axis=0)
+        y = pd.concat([y, augmented_y], ignore_index=True)
+    elif isPA and not isAG:
+        augmented_x = []
+        for signal in x:
+            signal_pitch_aug = librosa.effects.pitch_shift(signal, sr=SAMPLING_RATE, n_steps=2)
+            augmented_x.append(signal_pitch_aug)
+        augmented_x = np.array(augmented_x)
+        augmented_y = pd.concat([y] * len(augmented_x), ignore_index=True)
+        x = np.concatenate((x, augmented_x), axis=0)
+        y = pd.concat([y, augmented_y], ignore_index=True)
+    else:
+        x = np.array(x)
+    return x,y
+
+#improved load_and_split works both for single-mutliple train/test seperation
+def load_and_split(meta_filename, speaker='',isAG=False,isPA=False):
+    sdr_df = pd.read_csv(meta_filename, sep='\t', header=0, index_col='Unnamed: 0')
+    if speaker == '':
+        train = partition_load(sdr_df.query("split == 'TRAIN'"))
+        test = partition_load(sdr_df.query("split == 'TEST'"))
+        dev = partition_load(sdr_df.query("split == 'DEV'"))
+        return train, dev, test
+    else:
+        #sdr_df['file_drive'] = sdr_df['file'].apply(lambda x: os.path.join('/content/drive/MyDrive/project', x))
+        speaker_data = sdr_df.query("speaker == '{}'".format(speaker))
+        train = partition_load(pdf=speaker_data,isAG=isAG,isPA=isPA)
+        test = partition_load(pdf = sdr_df.query("speaker != '{}'".format(speaker))) 
+        return train, test
 
 def preprocess(data, downsample_size=16, num_mels=13, pool='mean'):
     X, y = data
@@ -140,3 +188,52 @@ def plot_losses(train_losses, valid_losses, filename, val_type='Loss'):
     plt.legend()
     plt.savefig(filename)
     plt.clf()
+
+
+def spec_augment(signal, sr, num_mask=2, freq_masking=0.15, time_masking=0.20):
+    # compute spectrogram
+    n_fft = int(round(0.025 * sr))  # set n_fft based on the input sampling rate
+    S = librosa.stft(signal, n_fft=n_fft)
+
+
+    # apply frequency masking
+    num_freqs, num_times = S.shape
+    f_mask = num_mask
+    f_masking = int(freq_masking * num_freqs)
+    for _ in range(f_mask):
+        f0 = np.random.randint(0, num_freqs - f_masking)
+        df = np.random.randint(0, f_masking)
+        if f0 == 0 and f0 + df == 0:
+            continue
+        if f0 == num_freqs - f_masking and f0 + df == num_freqs:
+            continue
+        if f0 + df > num_freqs:
+            df = num_freqs - f0
+        mask_end = int(f0 + df)
+        S[f0:mask_end, :] = 0
+
+    # apply time masking
+    t_mask = num_mask
+    t_masking = int(time_masking * num_times)
+    for _ in range(t_mask):
+        t0 = np.random.randint(0, num_times - t_masking)
+        dt = np.random.randint(0, t_masking)
+        if t0 == 0 and t0 + dt == 0:
+            continue
+        if t0 == num_times - t_masking and t0 + dt == num_times:
+            continue
+        if t0 + dt > num_times:
+            dt = num_times - t0
+        mask_end = int(t0 + dt)
+        S[:, t0:mask_end] = 0
+
+    # compute inverse spectrogram
+    signal_aug = librosa.istft(S)
+
+    # ensure the augmented signal has the same length as the original
+    if len(signal_aug) > len(signal):
+        signal_aug = signal_aug[:len(signal)]
+    else:
+        signal_aug = np.pad(signal_aug, (0, max(0, len(signal) - len(signal_aug))), mode='constant')
+
+    return signal_aug

@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 13 07:58:40 2023
-
-@author: kanubalad
-"""
-
 from utils import *
 from torch.utils.data import Dataset, DataLoader
 import torch
@@ -102,18 +94,18 @@ class SpeechToTextCNN(nn.Module):
 
     
 if __name__ == "__main__":
-    train, dev, test = load_and_split(None)
+    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv")
     num_classes = np.max(train[1].values.tolist()) + 1
     print("number of classes", num_classes)
 
     num_mels = 13
     # Initialize the model
-    batch_size = 3 # 256
+    batch_size = 32 # 256
     input_size = num_mels
     hidden_size = 256
     output_size = num_classes
     learning_rate = 1e-3
-    num_epochs = 1000
+    num_epochs = 50
     single_batch_overfit = False
     dropout=0.4
     print("variables intialized")
@@ -132,9 +124,9 @@ if __name__ == "__main__":
     test_data = AudioDataset(test, num_mels=num_mels)
     dev_data = AudioDataset(dev, num_mels=num_mels)
     
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=16)
-    dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=20)
+    dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
     
     
 
@@ -161,7 +153,7 @@ if __name__ == "__main__":
         model.train()
         train_loss = 0.0
         train_correct = 0
-    
+        total_train = 0
         for features, lengths, label in train_loader:
             features = features.to(device)
             # lengths = lengths.to(device)
@@ -175,12 +167,12 @@ if __name__ == "__main__":
     
             train_loss += loss.item() * features.size(0)
             train_correct += (torch.argmax(output, dim=1) == label).sum().item()
-    
+            total_train += features.size(0)
             if single_batch_overfit:
                 break
-    
-        train_loss /= len(train_data)
-        train_accuracy = train_correct / len(train_data)
+
+        train_loss /= total_train # fix calculation of train_loss
+        train_accuracy = train_correct / total_train
         train_losses.append(train_loss)
         train_accs.append(train_accuracy)
     
@@ -191,10 +183,11 @@ if __name__ == "__main__":
         model.eval()
         val_loss = 0.0
         val_correct = 0
-    
+        total_val = 0
+
         if not single_batch_overfit:
             with torch.no_grad():
-                for features, lengths, label in dev_loader:
+                for features, lengths, label in test_loader:
                     features = features.to(device)
                     label = label.to(device)
                     output = model(features)
@@ -202,12 +195,13 @@ if __name__ == "__main__":
     
                     val_loss += loss.item() * features.size(0)
                     val_correct += (torch.argmax(output, dim=1) == label).sum().item()
+                    total_val += features.size(0)
         else:
             val_loss = 0.0
             val_correct = 0
     
-        val_loss /= len(dev_data)
-        val_accuracy = val_correct / len(dev_data)
+        val_loss /= total_val # fix calculation of val_loss
+        val_accuracy = val_correct / total_val # fix calculation of val_accuracy
         valid_losses.append(val_loss)
         valid_accs.append(val_accuracy)
 

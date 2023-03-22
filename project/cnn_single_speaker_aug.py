@@ -1,11 +1,18 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Mar 13 07:58:40 2023
+
+@author: kanubalad
+"""
+
 from utils import *
 from torch.utils.data import Dataset, DataLoader
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as weight_init
-import os
-import random
 
 
 class AudioDataset(Dataset):
@@ -39,93 +46,104 @@ class PadSequence:
     
 
     
+class SpeechToTextCNN(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, dropout_prob):
+        super(SpeechToTextCNN, self).__init__()
 
-class TransformerModel(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, num_heads, num_layers, dropout):
-        super(TransformerModel, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.output_size = output_size
-        self.num_heads = num_heads
-        self.num_layers = num_layers
-        
-        # Define input embedding layer
-        self.embedding = nn.Linear(input_size, hidden_size)
-        
-        # Define transformer encoder layer
-        self.transformer_encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(hidden_size, num_heads, dropout=dropout)
-            ,num_layers=num_layers)
-        
-        # Define output layer
-        self.output = nn.Linear(hidden_size, output_size)
-        
-    def forward(self, input_seq):
-        # Apply input embedding
-        embedded_seq = self.embedding(input_seq)
-        
-        # Transpose input for transformer encoder layer
-        embedded_seq = embedded_seq.transpose(0, 1)
-        
-        # Apply transformer encoder layer
-        output_seq = self.transformer_encoder(embedded_seq)
-        
-        # Transpose output to original shape
-        output_seq = output_seq.transpose(0, 1)
+        # Define the layers
+        self.conv1 = nn.Conv1d(in_channels=input_size, out_channels=hidden_size, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(hidden_size)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool1d(kernel_size=2)
+        self.dropout1 = nn.Dropout(dropout_prob)
 
-        # Mean of all output token in the sequence (dim=1)
-        output_seq = output_seq.mean(1)
-        
-        # Apply output layer
-        output_seq = self.output(output_seq)
-        
-        return output_seq
+        self.conv2 = nn.Conv1d(in_channels=hidden_size, out_channels=hidden_size, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(hidden_size)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool1d(kernel_size=2)
+        self.dropout2 = nn.Dropout(dropout_prob)
 
+        self.conv3 = nn.Conv1d(in_channels=hidden_size, out_channels=hidden_size, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm1d(hidden_size)
+        self.relu3 = nn.ReLU()
+        self.pool3 = nn.MaxPool1d(kernel_size=2)
+        self.dropout3 = nn.Dropout(dropout_prob)
 
-    
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+
+        x = x.transpose(1,2)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu1(x)
+        x = self.pool1(x)
+        x = self.dropout1(x)
+
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu2(x)
+        x = self.pool2(x)
+        x = self.dropout2(x)
+
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.relu3(x)
+        x = self.pool3(x)
+        x = self.dropout3(x)
+        x = x.transpose(1,2)
+
+        
+
+        x = x.mean(dim=1) # Global average pooling
+        x = self.fc(x)
+
+        return x
+
     
 if __name__ == "__main__":
-    train, dev, test = load_and_split(meta_filename = "SDR_metadata.tsv")
-    num_classes = np.max(train[1].values.tolist()) + 1
+    speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler']
+    train, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker= "george",isAG=True)
+    #spec_train = spec_augmentation(meta_filename = "SDR_metadata.tsv", speaker= "george", num_augmentations=2, freq_masking=0.15, time_masking=0.20)
+
+    #num_classes = np.max(train[1].values.tolist()) + 1
+    num_classes = np.max(pd.DataFrame(train[1]).values.tolist()) + 1
     print("number of classes", num_classes)
 
     num_mels = 13
     # Initialize the model
-    batch_size = 128
+    batch_size = 32 # 256
     input_size = num_mels
-    hidden_size = 128
+    hidden_size = 256
     output_size = num_classes
-    num_heads = 8
-    num_att_layers = 4
+    learning_rate = 1e-3
+    num_epochs = 50
+    single_batch_overfit = False
     dropout=0.4
-    
+    print("variables intialized")
+
     save_model_every=10
     seed = 43
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
-
-    learning_rate = 1e-4
-    num_epochs = 50
-    single_batch_overfit = False
-
-    model_name = f"tr_hs{hidden_size}_nh{num_heads}_bs{batch_size}_nl{num_att_layers}_dr{dropout}_lr{learning_rate}"
+    model_name = f"george_aug_cnn_hs{hidden_size}_bs{batch_size}_dr{dropout}_lr{learning_rate}"
     save_dir = f'checkpoints/{model_name}'
     os.makedirs(save_dir, exist_ok=True)
     
     train_data = AudioDataset(train, num_mels=num_mels)
     test_data = AudioDataset(test, num_mels=num_mels)
-    dev_data = AudioDataset(dev, num_mels=num_mels)
+   # dev_data = AudioDataset(dev, num_mels=num_mels)
     
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=20)
-    dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=20)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle= not single_batch_overfit, collate_fn=PadSequence(), num_workers=16)
+  #  dev_loader = DataLoader(dev_data, batch_size=batch_size, shuffle=True, collate_fn=PadSequence(), num_workers=16)
     
     
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = TransformerModel(input_size, hidden_size, output_size, num_heads, num_att_layers, dropout).to(device)
+    model =  SpeechToTextCNN(input_size=13, hidden_size=hidden_size, 
+                         output_size=num_classes, dropout_prob=dropout).to(device)
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print("Number of trainable parameters:", num_params)
@@ -140,27 +158,24 @@ if __name__ == "__main__":
     train_accs = []
     valid_accs = []
 
+
+    print("starting the training")
     for epoch in range(start_epoch, num_epochs):
         model.train()
         train_loss = 0.0
         train_correct = 0
         total_train = 0
         for features, lengths, label in train_loader:
-            features = features.to(device) # B x Seq len x Num mels
+            features = features.to(device)
+            # lengths = lengths.to(device)
             label = label.to(device)
             optimizer.zero_grad()
-
             output = model(features)
-
-            # print (torch.argmax(output, 1))
-
-            # import pdb;
-            # pdb.set_trace()
             loss = criterion(output, label)
-
+    
             loss.backward()
             optimizer.step()
-
+    
             train_loss += loss.item() * features.size(0)
             train_correct += (torch.argmax(output, dim=1) == label).sum().item()
             total_train += features.size(0)
@@ -169,31 +184,33 @@ if __name__ == "__main__":
 
         train_loss /= total_train # fix calculation of train_loss
         train_accuracy = train_correct / total_train
-        
-        if single_batch_overfit:
-            train_accuracy = train_correct / batch_size
         train_losses.append(train_loss)
         train_accs.append(train_accuracy)
-
+    
+        if single_batch_overfit:
+            train_accuracy = train_correct / batch_size
+        # train_accuracy = train_correct / len(train_data)
+    
         model.eval()
         val_loss = 0.0
         val_correct = 0
         total_val = 0
+
         if not single_batch_overfit:
             with torch.no_grad():
-                for features, lengths, label in dev_loader:
+                for features, lengths, label in test_loader:
                     features = features.to(device)
                     label = label.to(device)
                     output = model(features)
                     loss = criterion(output, label)
-
+    
                     val_loss += loss.item() * features.size(0)
                     val_correct += (torch.argmax(output, dim=1) == label).sum().item()
                     total_val += features.size(0)
         else:
             val_loss = 0.0
             val_correct = 0
-        
+    
         val_loss /= total_val # fix calculation of val_loss
         val_accuracy = val_correct / total_val # fix calculation of val_accuracy
         valid_losses.append(val_loss)
@@ -218,13 +235,10 @@ if __name__ == "__main__":
             plot_file_name = save_dir + '/{:04d}'.format(epoch+1)
             plot_losses(train_losses, valid_losses, plot_file_name + '_loss.png', val_type='Loss')
             plot_losses(train_accs, valid_accs, plot_file_name + '_acc.png', val_type='Acc')
-
+    
         print('Epoch: {}, Train Loss: {:.4f}, Train Accuracy: {:.4f}, Val Loss: {:.4f}, Val Accuracy: {:.4f}'.format(epoch+1, train_loss, train_accuracy, val_loss, val_accuracy))
-    
-        # Early stopping
-        if not_decreasing_val_cnt >= 100: 
-            break
-    
+        
+        
     print ("best validation accuracy: ", best_val)
     with open(save_dir + f'/best_val_{best_val}.txt', 'w') as f:
         f.write(f"best validation accuracy: {best_val}")
