@@ -119,7 +119,7 @@ class LSTMNetwork(nn.Module):
 if __name__ == "__main__":
     speakers = ['george', 'jackson', 'lucas', 'nicolas', 'theo', 'yweweler']
     for speaker in speakers:
-        train, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker= "george",isPA=True)
+        train, test = load_and_split(meta_filename = "SDR_metadata.tsv", speaker= speaker,isPA=True)
         num_classes = np.max(train[1].values.tolist()) + 1
         print("number of classes", num_classes)
 
